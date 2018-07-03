@@ -101,7 +101,7 @@ $version           = "0.6.8"
 
 if($debugon){$debugMode      = $True}                                                #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                               #Force DebugMode Off if script run without Consloe output                                                 
-$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
+#$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
 
 #Variable definitions - do not change
 $unlocked          = $null                                                           #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
