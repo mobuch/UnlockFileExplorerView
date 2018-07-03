@@ -2,7 +2,7 @@
 
 #UnlockFileExplorerView
 
-#Version           = "0.6.7"
+#Version           = "0.6.8"
 
 #Copyright:         Free to use, please leave this header intact
 #Author:            Marek Obuchowski (mobuchowski.pl)
@@ -69,11 +69,17 @@
 #1 Extended Debug output to the console and file
 #2 Updated Error messages handling
 #3 Added code to add tenant to the IE pop-up blocker whitelist
+#4 Added support for hiding the console entirely
 
 #0.6.7
 #1 Updated network and sharepoint connectivity test and result logging
 #2 Removed unnecesary clutter form Error messages
 
+#0.6.8
+#1 Fixed typos
+#2 Registry path varaible defined as global now
+#3 Added code to check presence of the registry keys for setting up popup blocker
+#4 Added timout fr waiting for Library window in Windows Explorer
 #>
 
 
@@ -81,10 +87,8 @@
 <#
 #1 Update drive discovery to check for the best mapped drive
 #2 Create function for building URLs and move code to it
-#3 Write Protected Mode discovery code
-#4 Add timout fr waiting for Library window in Windows Explorer
-#5 Native authenitcation rather than IE?
-#6 Add support for hiding the console entirely
+#3 Write better Protected Mode discovery code
+#4 Native authenitcation rather than IE?
 ####>
 
 param(
@@ -93,11 +97,11 @@ param(
     )
 
 
-$version           = "0.6.7"
+$version           = "0.6.8"
 
 if($debugon){$debugMode      = $True}                                                #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                               #Force DebugMode Off if script run without Consloe output                                                 
-#$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
+$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
 
 #Variable definitions - do not change
 $unlocked          = $null                                                           #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
@@ -120,6 +124,7 @@ $mappingFormat     = $null                                                      
 $i_MaxLocalLogSize = 2                                                               #Set the Max local log size in MB
 $protectedMode     = $True                                                           #Variable for storing info re Protected Mode on or off in IE
 $showConsoleOutput = $True                                                           #Show console output by default
+$IEpopuppath       = "hkcu:\Software\Microsoft\Internet Explorer\New Windows"        #Registry path for IE popup blocker configuration
 
 #Hide console it parameter found
 if($hideConsole){
@@ -232,19 +237,8 @@ function openIE {                                                        #Functi
         
     try {
         
-        if($debugMode){log -text ("Testing if IE popup blocker conffigured to allow tenant URL: " + $baseURL) -debugg}
-
-        $tmp = TestRegistryValue -path "hkcu:\Software\Microsoft\Internet Explorer\New Windows\Allow" -value "$baseURL"  #Check if popup blocker already configured
-
-        if(!$tmp){                                                                                                       #Add tenant URL to IE popup blocker whitelist
-            if($debugMode){log -text ("Adding IE popup blocker exception: " + $baseURL) -debugg}
-            Set-Location "hkcu:\Software\Microsoft\Internet Explorer\New Windows\Allow"                   
-            New-ItemProperty -Path . -Name "$baseURL" -Type Binary                                                       
-            if($debugMode){log -text "Added popup blocker exception" -debugg}
-             }else {if($debugMode){log -text "IE popup blocker already configured" -debugg}}
-
         log -text "Opening library in View in File Explorer mode"                                            #Inform user
-        
+
         $IE=new-object -com internetexplorer.application                                                     #Create IE object
         $IE.visible = $debugMode                                                                             #Hide IE window if not in debug mode
         
@@ -254,8 +248,8 @@ function openIE {                                                        #Functi
         $IE.navigate2($URL)                                                                                  #Navigate to View in File Explorer URL
         $IE.visible = $debugMode                                                                             #Hide IE window if not in debug mode
    
-        do  {$done  = closeFileExplorerWindow} while (!$done)                                                #Loop for checking if library already open. Check for the library window, set process state. Repeat if process state not done, quit loop if done
-        
+        #do  {$done  = closeFileExplorerWindow} while (!$done)                                                #Loop for checking if library already open. Check for the library window, set process state. Repeat if process state not done, quit loop if done
+        closeFileExplorerWindow
 
         if($IE.HWND -eq $null){                                                                                     
             if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                             #Write dubg log
@@ -288,26 +282,68 @@ function killIE {
     $IE.Quit()                                                            #Quit IE gracefully
 }
 
+function IEpopup {
+#Function to test and configure Internet Explroer popup whitelist
+
+try{
+    if($debugMode){log -text ("Testing if IE popup blocker conffigured to allow tenant URL: " + $baseURL) -debugg}
+    
+        #Set-Location ($IEpopuppath)                                                                      #Set location to New Windows key
+
+        if(Test-Path ($IEpopuppath+"\Allow")){                                                            #Test if Allow key already exists
+            #Set-Location ($IEpopuppath + "\Allow")
+                    if((TestRegistryValue -path ($IEpopuppath+"\Allow") -value "$baseURL")){              #Test if Values already exist
+            if($debugMode){log -text ("IE popup blocker already configured") -debugg}
+                    }else{
+                        New-ItemProperty -Path ($IEpopuppath+"\Allow") -Name "$baseURL" -Type Binary                            #Create value                                                                 
+                        if($debugMode){log -text 'Added popup blocker exception to existing "Allow" key' -debugg}
+                    }
+        }else{                                                                                            #If Allow key does not exits
+            if($debugMode){log -text '"Allow" key does not exist, creating it now' -debugg}
+            New-Item -path $IEpopuppath -Name "Allow" >$null 2>&1                                       #Create Allow key
+            if($debugMode){log -text 'Added "Allow" key' -debugg}            
+            New-ItemProperty -Path ($IEpopuppath+"\Allow") -Name "$baseURL" -Type Binary >$null 2>&1    #Create value                                                                
+            if($debugMode){log -text 'Added popup blocker exception to the "Allow" key' -debugg}
+            }       
+    }catch{
+    $ErrorMessage = $_.Exception.Message
+    log -text ("Failed to manage Internet Explorer Pop-up blocker:") -fout
+    log -text $ErrorMessage -fout
+    exitScript
+
+    }
+}
+
 function closeFileExplorerWindow {                                        #Function for testing if Library already open, closing File Explorer window and changing the state of the unlocking state
 
     try {
+    
+    $timeout = New-TimeSpan -Minutes 2                                    #Set timout
+    $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
+        
+    while ($sw.elapsed -lt $timeout){       
+        
         $fs = (New-Object -comObject Shell.Application).Windows()|`       #Create object to store list of File Explorer windows containing SharePoint library
-            where-object { ($_.LocationName -like "*$libraryName*")`
+            where-object { ($_.LocationName -like ("*$libraryName*"))`
             -and  ($_.Name -like "*File Explorer*") }
     
         if ($fs) {                                                        #Check if File Explorer window is open.
                if ($debugMode) {
-                log -text ("Library open`n" + $fs) -debugg                #Wait for keystroke if in Debug mode
-                pause
+                log -text ("Library found open") -debugg                  
+                pause                                                     #Wait for keystroke if in Debug mode
                 write-host ""                
                 }
 
                log -text "Closing File Explorer Window"                   #Inform user
-               $fs | ForEach-Object {$_.Quit()}                           #Window open: Close and return $true.
-               return $true
+               $fs | ForEach-Object {$_.Quit()}
+               return $true                                               #Window open: Close and return $true.
+        } 
+    }
 
-        } else {                                                          #Window not open, return $false
-                return $false}
+    log -text "Timout: Failed to find open library" -fout
+    exitScript
+
+
     }catch{
     $ErrorMessage = $_.Exception.Message
     log -text ("Failed to manage Library in File Explorer:") -fout
@@ -316,9 +352,8 @@ function closeFileExplorerWindow {                                        #Funct
     }
 }
 
-#Function for testing registry values - returns $True if exists, $Flase if does not exist
 function TestRegistryValue {
-
+#Function for testing registry values - returns $True if exists, $Flase if does not exist
 param (
 
  [parameter(Mandatory=$true)]
@@ -328,20 +363,12 @@ param (
  [ValidateNotNullOrEmpty()]$Value
 )
 
-try {
 
-Get-ItemProperty -Path $Path | Select-Object -ExpandProperty $Value -ErrorAction Stop | Out-Null
- return $true
- }
-
-catch {
-
-return $false
+$c = 0
+Get-Item -Path $Path | Select-Object -ExpandProperty property | % { if ($_ -match $Value) { $c=1 ; return $true} }
+if ($c -eq 0) {return $false}
 
 }
-
-}
-
 
 function testConnection ($a, $type) {                                            #Function to test connection to the SharePoint server
     log -text "Testing connectivity to $type"                                #Inform user
@@ -437,7 +464,7 @@ function getMappedDrives {                                                #Funct
                 }                              
         
         }
-        if ($array.lengt -gt 1) {$array = $array | ? {$_}}       #delete empty elements if more than 1 element exist
+        if ($array.length -gt 1) {$array = $array | ? {$_}}       #delete empty elements if more than 1 element exist
     
             switch ($array.length){                              #Extract variables based on the array length
         
@@ -592,6 +619,7 @@ if ($libraryName -ne $null) {                                              #Stop
         if ($unlocked) {                                                   #Check if access already enabled, terminate if yes
             log -text "You can now use mapped drives. Terminating"         #Inform user
             } else {
+                IEpopup                                                    #Configrue IE popup blocker
                 openIE                                                     #Open library in IE, with View in File Explorer URL                 
                 log -text "You can now use mapped drives. Terminating"     #Inform user
                 } 
