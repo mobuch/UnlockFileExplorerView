@@ -5,9 +5,9 @@
 #Version           = "0.7.0"
 
 #Copyright:         Free to use, please leave this header intact
-#Author:            Marek Obuchowski (mobuchowski.pl)
+#Author:            Marek Obuchowski (http://www.mobuchowski.pl)
 #Credits:           EMEA Territory Services Team for all the bits and pieces that allowed this script to be created
-#Credits:           Jos Lieben (http://www.ogd.nl) OneDriveMapper creator for sharing his awesome work
+#Credits:           Jos Lieben (http://www.lieben.nu http://www.ogd.nl) OneDriveMapper creator for sharing his awesome work
 #Purpose:           To atomate opening SharePoint Online library in IE so the user is autoamtically authenticated and mapped drives unlocked
 
 ##############################################
@@ -81,6 +81,10 @@
 #3 Added code to check presence of the registry keys for setting up popup blocker
 #4 Added timout fr waiting for Library window in Windows Explorer
 #5 Re-rder testing conenction and discover drives code, drives first, test later
+
+#0.7.0
+#1 Added check if process running
+#2 Added code to manage discover running IE
 #>
 
 
@@ -102,7 +106,7 @@ $version           = "0.6.8"
 
 if($debugon){$debugMode      = $True}                                                #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                               #Force DebugMode Off if script run without Consloe output                                                 
-#$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
+$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
 
 #Variable definitions - do not change
 $unlocked          = $null                                                           #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
@@ -234,6 +238,45 @@ function checkDrive ($URL) {                                             #Functi
    return $result                                                        #Return $True if access already unlocked, $False if access locked
    }
 
+#region IE functions
+
+function Get-ProcessWithOwner{
+#Credits: Jos Lieben (http://www.lieben.nu http://www.ogd.nl)
+
+    param( 
+        [parameter(mandatory=$true,position=0)]$ProcessName 
+    )
+     
+    $ComputerName=$env:COMPUTERNAME 
+    $UserName=$env:USERNAME 
+    $PSStandardMembers = [System.Management.Automation.PSMemberInfo[]]@($(New-Object System.Management.Automation.PSPropertySet('DefaultDisplayPropertySet',[string[]]$('ProcessName','UserName','Domain','ComputerName','handle')))) 
+    
+    try { 
+        $Processes = Get-wmiobject -Class Win32_Process -ComputerName $ComputerName -Filter "name LIKE '$ProcessName%'"    #Pull the processes
+    } catch { 
+        return -1 
+    } 
+    if ($Processes -ne $null) {
+        $OwnedProcesses = @()                                                                                              #Define empty array
+        foreach ($Process in $Processes) {                                                                                 #Loop through processes
+            if($Process.GetOwner().User -eq $UserName){                                                                    #Check if process owned by the user, add properties if yes
+                $Process |  
+                Add-Member -MemberType NoteProperty -Name 'Domain' -Value $($Process.getowner().domain) 
+                $Process | 
+                Add-Member -MemberType NoteProperty -Name 'ComputerName' -Value $ComputerName  
+                $Process | 
+                Add-Member -MemberType NoteProperty -Name 'UserName' -Value $($Process.GetOwner().User)  
+                $Process |  
+                Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $PSStandardMembers                        #Keep our defiend members set only
+                $OwnedProcesses += $Process 
+            } 
+        } 
+        return $OwnedProcesses 
+    } else { 
+        return 0 
+    } 
+}
+
 function openIE {                                                        #Function for opening IE and navigating to View in File Explorer URL         
         
     try {
@@ -314,6 +357,8 @@ try{
 
     }
 }
+
+#endregion
 
 function closeFileExplorerWindow {                                        #Function for testing if Library already open, closing File Explorer window and changing the state of the unlocking state
 
@@ -523,6 +568,7 @@ function ExitScript{
 
 #### Start script ####
 
+
 ResetLog #Reset log :D :P
 
 log -text "******** Start log ********"
@@ -602,24 +648,40 @@ try {
 
 #Proceed if libary found in the mapped drive
 
-if ($libraryName -ne $null) {                                              #Stop if no SharePoint or no library found
+if ($libraryName -ne $null) {                                                             #Stop if no SharePoint or no library found
     
     #Build File Explorer View URL.
     $URL       = "https://" + $baseURL + "/sites/" + $lob2 + $siteName2 + $libraryName2 + $urlOptions + "%2Fsites" + ($lob -replace '-','%2D') + "%2F" + $siteName +"%2F" + ($libraryName.TrimEnd('/') -replace " ", "%20")   #Build URL for opening in View in File Explorer mode
     if($DebugMode) {log -text ("View in File Explorer URL: " + $URL) -debugg}
     
-    $unlocked = checkDrive ($mappedURL)                                    #Check the current state of access and store in the $Unlocked variable                          
+    $unlocked = checkDrive ($mappedURL)                                                   #Check the current state of access and store in the $Unlocked variable                          
     
         if ($debugMode) {
-            $unlocked = $false                                                 #Set the access state to $False if in DEbug mode. This allows testing entire scritpt
+            $unlocked = $false                                                            #Set the access state to $False if in DEbug mode. This allows testing entire scritpt
             log -text 'Debug mode: setting up $unlocked to $False for testing' -warning
             }                                   
             
-
-
-        if ($unlocked) {                                                   #Check if access already enabled, terminate if yes
-            log -text "You can now use mapped drives. Terminating"         #Inform user
+        if ($unlocked) {                                                                 #Check if access already enabled, terminate if yes
+            log -text "You can now use mapped drives. Terminating"                       #Inform user
             } else {
+                
+                $tempIErunning = Get-ProcessWithOwner iexplore                                                    #Check if IE already running
+
+                if($tempIErunning){
+                    log -text "Internet Explorer already open, close all windows Internet Explorer windows" -fout #Prompt user for closing IE
+                }
+
+                $timeout = New-TimeSpan -Minutes 3                                                                #Set timout
+                $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
+
+                while($tempIErunning){                                                                            
+                    if ($sw.elapsed -gt $timeout){                                                                #Inform about reached timeout
+                        log -text "Timeout: Internet Explorer windows not closed" -fout
+                        log -text "Terminating script for user data safety reasons" -fout
+                        exitScript
+                    }  
+                }
+
                 IEpopup                                                    #Configrue IE popup blocker
                 openIE                                                     #Open library in IE, with View in File Explorer URL                 
                 log -text "You can now use mapped drives. Terminating"     #Inform user
