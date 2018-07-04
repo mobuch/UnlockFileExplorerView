@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -ExecutionPolicy Bypass .\UnlockFileExplorerView* -debugon
+powershell.exe -ExecutionPolicy Bypass .\UnlockFileExplorerView.ps1 -debugon
