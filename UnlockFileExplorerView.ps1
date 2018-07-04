@@ -2,7 +2,7 @@
 
 #UnlockFileExplorerView
 
-#Version           = "0.6.8"
+#Version           = "0.7.0"
 
 #Copyright:         Free to use, please leave this header intact
 #Author:            Marek Obuchowski (mobuchowski.pl)
