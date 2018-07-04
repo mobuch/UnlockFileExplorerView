@@ -83,8 +83,9 @@
 #5 Re-rder testing conenction and discover drives code, drives first, test later
 
 #0.7.0
-#1 Added check if process running
-#2 Added code to manage discover running IE
+#1 Added functions for checking if given process is running
+#2 Added code to manage Protected Mode settings - needed for future
+#3 Waiting for IE to be closed added with timeout
 #>
 
 
@@ -92,7 +93,8 @@
 <#
 #1 Update drive discovery to check for the best mapped drive
 #2 Create function for building URLs and move code to it
-#3 Write better Protected Mode discovery code
+#3 Add code to evalueate the output of IE browsing
+#5 Add logon code if user not logged in automatically
 #4 Native authenitcation rather than IE?
 ####>
 
@@ -102,34 +104,39 @@ param(
     )
 
 
-$version           = "0.6.8"
+$version                     = "0.6.8"
 
 if($debugon){$debugMode      = $True}                                                #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                               #Force DebugMode Off if script run without Consloe output                                                 
-$debugMode         = $True                                                          #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
+#$debugMode                   = $True                                                 #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
 
-#Variable definitions - do not change
-$unlocked          = $null                                                           #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
-$done              = $null                                                           #Variable for holding for the state of unlocking process: $True = unlock process completed, $False = unlock process in progress
-$IE                = $null                                                           #Variable for storing Internet Explorer object, for closing once unlocking process is completed
-$urlOptions        = "Forms/AllItems.aspx?ExplorerWindowUrl="                        #Variable for storing part of the URL responsible for opening library in File Explorer
-$baseURL           = $null                                                           #Variable for storing SharePoint tenant URL
-$spoConnection     = $null                                                           #Variable for storing SharePoint connectivity results
-$dcConnection      = $null                                                           #Variable for storing DC connectivity results
-$dcName            = $env:LOGONSERVER.Substring(2)                                   #Setting up DC variable for testing connectivity
-$lob               = $null                                                           #Variable for storing LOB name
-$siteName          = $null                                                           #Variable for storing Site name
-$libraryName       = $null                                                           #Variable for storing Library name
-$lob2              = $null                                                           #Variable for building URLS
-$siteName2         = $null                                                           #Variable for building URLS
-$libraryName2      = $null                                                           #Variable for building URLS
-$subfolders        = $null                                                           #Variable for building URLS
-$logfile           = ($env:APPDATA + "\UnlockFileExplorerView_$version.log")         #Logfile to log to                                                         
-$mappingFormat     = $null                                                           #Variable for storing mapping format
-$i_MaxLocalLogSize = 2                                                               #Set the Max local log size in MB
-$protectedMode     = $True                                                           #Variable for storing info re Protected Mode on or off in IE
-$showConsoleOutput = $True                                                           #Show console output by default
-$IEpopuppath       = "hkcu:\Software\Microsoft\Internet Explorer\New Windows"        #Registry path for IE popup blocker configuration
+#Variable definitions
+$unlocked            = $null                                                                         #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
+$done                = $null                                                                         #Variable for holding for the state of unlocking process: $True = unlock process completed, $False = unlock process in progress
+$IE                  = $null                                                                         #Variable for storing Internet Explorer object, for closing once unlocking process is completed
+$urlOptions          = "Forms/AllItems.aspx?ExplorerWindowUrl="                                      #Variable for storing part of the URL responsible for opening library in File Explorer
+$baseURL             = $null                                                                         #Variable for storing SharePoint tenant URL
+$spoConnection       = $null                                                                         #Variable for storing SharePoint connectivity results
+$dcConnection        = $null                                                                         #Variable for storing DC connectivity results
+$dcName              = $env:LOGONSERVER.Substring(2)                                                 #Setting up DC variable for testing connectivity
+$lob                 = $null                                                                         #Variable for storing LOB name
+$siteName            = $null                                                                         #Variable for storing Site name
+$libraryName         = $null                                                                         #Variable for storing Library name
+$lob2                = $null                                                                         #Variable for building URLS
+$siteName2           = $null                                                                         #Variable for building URLS
+$libraryName2        = $null                                                                         #Variable for building URLS
+$subfolders          = $null                                                                         #Variable for building URLS
+$logfile             = ($env:APPDATA + "\UnlockFileExplorerView_$version.log")                       #Logfile to log to                                                         
+$mappingFormat       = $null                                                                         #Variable for storing mapping format
+$i_MaxLocalLogSize   = 2                                                                             #Set the Max local log size in MB
+$protectedMode       = $True                                                                         #Variable for storing info re Protected Mode on or off in IE
+$showConsoleOutput   = $True                                                                         #Show console output by default
+$IEpopuppath         = "hkcu:\Software\Microsoft\Internet Explorer\New Windows"                      #Registry path for IE popup blocker configuration
+$protectedModeValues = @{}                                                                           #Array for storing initial Protected Mode settings
+$autoProtectedMode   = $True                                                                         #Automatically temporarily disable IE Protected Mode if it is enabled
+$userIEzones = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
+$machineIEzones = "HKLM:\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
+
 
 #Hide console it parameter found
 if($hideConsole){
@@ -241,7 +248,6 @@ function checkDrive ($URL) {                                             #Functi
 #region IE functions
 
 function Get-ProcessWithOwner{
-#Credits: Jos Lieben (http://www.lieben.nu http://www.ogd.nl)
 
     param( 
         [parameter(mandatory=$true,position=0)]$ProcessName 
@@ -275,6 +281,23 @@ function Get-ProcessWithOwner{
     } else { 
         return 0 
     } 
+}
+
+function Get-ProcessAll{
+
+    param( 
+        [parameter(mandatory=$true,position=0)]$ProcessName 
+    )
+     
+    $ComputerName=$env:COMPUTERNAME 
+    
+    try { 
+        $Processes = Get-wmiobject -Class Win32_Process -ComputerName $ComputerName -Filter "name LIKE '$ProcessName%'"    #Pull the processes
+    } catch { 
+        return -1 
+    }
+
+    if($Processes){return $true} else {return $flase}   
 }
 
 function openIE {                                                        #Function for opening IE and navigating to View in File Explorer URL         
@@ -356,6 +379,59 @@ try{
     exitScript
 
     }
+}
+
+function revertProtectedMode(){ 
+    if($debugmode){log -text "autoProtectedMode is set to True, reverting to old settings" -debugg}
+    try{ 
+        for($i=0; $i -lt 4; $i++){ 
+            if($protectedModeValues[$i] -ne $Null){ 
+                if($DebugMode) {log -text "Setting zone $i back to $($protectedModeValues[$i])" -debugg}
+                Set-ItemProperty -Path "$($userIEzones)\$($i)\" -Name "2500"  -Value $protectedModeValues[$i] -Type Dword -ErrorAction SilentlyContinue 
+            } 
+        } 
+    } 
+    catch{ 
+        if($debugmode){log -text "Failed to modify registry keys to change ProtectedMode back to the original settings: $($Error[0])" -fout}
+    } 
+} 
+
+function checkProtectedModeGPO(){
+#check if any zones are configured with Protected Mode through group policy (which we can't modify) 
+    $res= $false
+    for($i=0; $i -lt 4; $i++){ 
+        $curr = Get-ItemProperty -Path "$($machineIEzones)\$($i)\" -Name "2500" -ErrorAction SilentlyContinue | select -exp 2500 
+        if($curr -ne $Null -and $curr -ne 3){ 
+            log -text "IE Zone $i protectedmode is enabled through group policy, autoprotectedmode cannot disable it. This will likely cause the script to fail." -fout
+            $res = $true
+        }
+    }
+
+   return $res
+}
+
+function disableProtectedMode(){
+        if($autoProtectedMode){ 
+            if($debugmode) {log -text "autoProtectedMode is set to True, disabling ProtectedMode temporarily" -debugg}
+     
+            #store old values and change new ones 
+            try{ 
+                for($i=0; $i -lt 4; $i++){ 
+                    $curr = Get-ItemProperty -Path "$($userIEzones)\$($i)\" -Name "2500" -ErrorAction SilentlyContinue| select -exp 2500 
+                    if($curr -ne $Null){ 
+                        $protectedModeValues[$i] = $curr 
+                        if($debugmode){log -text "Zone $i was set to $curr, setting it to 3" -debugg}
+                    }else{
+                        $protectedModeValues[$i] = 0 
+                        if($Debugmode){log -text "Zone $i was not yet set, setting it to 3" -debugg}
+                    }
+                    Set-ItemProperty -Path "$($userIEzones)\$($i)\" -Name "2500"  -Value "3" -Type Dword -ErrorAction Stop
+                } 
+            } 
+            catch{ 
+                log -text "Failed to prepare IE (PM) $($error[0])" -fout
+            } 
+        }
 }
 
 #endregion
@@ -569,7 +645,7 @@ function ExitScript{
 #### Start script ####
 
 
-ResetLog #Reset log :D :P
+ResetLog #Reset log :P
 
 log -text "******** Start log ********"
 
@@ -646,7 +722,7 @@ try {
 }
 
 
-#Proceed if libary found in the mapped drive
+#Proceed only if libary found in the mapped drive
 
 if ($libraryName -ne $null) {                                                             #Stop if no SharePoint or no library found
     
@@ -664,27 +740,30 @@ if ($libraryName -ne $null) {                                                   
         if ($unlocked) {                                                                 #Check if access already enabled, terminate if yes
             log -text "You can now use mapped drives. Terminating"                       #Inform user
             } else {
-                
-                $tempIErunning = Get-ProcessWithOwner iexplore                                                    #Check if IE already running
+                 
+                if(Get-ProcessAll iexplore){                                                                          #Check if IE already running
+                    $timeout = New-TimeSpan -seconds 5                                                                #Set timout
+                    log -text "Internet Explorer already open, close all windows Internet Explorer windows" -fout     #Prompt user for closing IE
+                    log -text "Script will terminate in $timeout otherwise" -fout
+                    $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
 
-                if($tempIErunning){
-                    log -text "Internet Explorer already open, close all windows Internet Explorer windows" -fout #Prompt user for closing IE
+                    while((Get-ProcessAll iexplore) -and ($sw.elapsed -lt $timeout)){                                                                            
+                        write-host -nonewline -foreground red "."
+                        sleep -Seconds 1
+                    }
+                    $sw.stop                                                                                          #stop the timer
+                    if($sw.elapsed -gt $timeout){                                                                     #exit script if timed out
+                        log -text "Timeout reached. Terminating script for user data safety reasons" -fout
+                        log -text "You need to login to SharePoint and View in File Explorer manually" -fout
+                        exitscript
+                    }
                 }
 
-                $timeout = New-TimeSpan -Minutes 3                                                                #Set timout
-                $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
-
-                while($tempIErunning){                                                                            
-                    if ($sw.elapsed -gt $timeout){                                                                #Inform about reached timeout
-                        log -text "Timeout: Internet Explorer windows not closed" -fout
-                        log -text "Terminating script for user data safety reasons" -fout
-                        exitScript
-                    }  
-                }
-
-                IEpopup                                                    #Configrue IE popup blocker
-                openIE                                                     #Open library in IE, with View in File Explorer URL                 
-                log -text "You can now use mapped drives. Terminating"     #Inform user
+                $protectedmode = checkProtectedModeGPO                          #Check if IE Protected mode set via GPO
+                disableProtectedMode                                            #Disbale Protected mode via user settings 
+                IEpopup                                                         #Configrue IE popup blocker
+                openIE                                                          #Open library in IE, with View in File Explorer URL                 
+                log -text "You can now use mapped drives. Terminating"          #Inform user
                 } 
                          
 } else {
@@ -692,7 +771,7 @@ if ($libraryName -ne $null) {                                                   
                     }
     
           
-
+revertProtectedMode                                                             #Revert to original Protected Mode settigns
 ExitScript
 
 
