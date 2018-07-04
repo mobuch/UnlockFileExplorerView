@@ -80,6 +80,7 @@
 #2 Registry path varaible defined as global now
 #3 Added code to check presence of the registry keys for setting up popup blocker
 #4 Added timout fr waiting for Library window in Windows Explorer
+#5 Re-rder testing conenction and discover drives code, drives first, test later
 #>
 
 
