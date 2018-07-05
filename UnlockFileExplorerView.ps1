@@ -108,9 +108,9 @@ $version                     = "0.6.8"
 
 if($debugon){$debugMode      = $True}                                                #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                               #Force DebugMode Off if script run without Consloe output                                                 
-#$debugMode                   = $True                                                 #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
+$debugMode                   = $True                                                 #Use to overvrite parameters .Set to $True if you want the script to ignore current state of the access and go ahead with all actions. Set to $False for normal operation.
 
-#Variable definitions
+#region:Variable definitions
 $unlocked            = $null                                                                         #Variable for holding current state of access to mapped libraries: $True = access already unlocked, $False = access locked
 $done                = $null                                                                         #Variable for holding for the state of unlocking process: $True = unlock process completed, $False = unlock process in progress
 $IE                  = $null                                                                         #Variable for storing Internet Explorer object, for closing once unlocking process is completed
@@ -129,14 +129,15 @@ $subfolders          = $null                                                    
 $logfile             = ($env:APPDATA + "\UnlockFileExplorerView_$version.log")                       #Logfile to log to                                                         
 $mappingFormat       = $null                                                                         #Variable for storing mapping format
 $i_MaxLocalLogSize   = 2                                                                             #Set the Max local log size in MB
-$protectedMode       = $True                                                                         #Variable for storing info re Protected Mode on or off in IE
+$GPOprotectedMode    = $null                                                                         #Variable for storing info re Protected Mode on or off in IE
 $showConsoleOutput   = $True                                                                         #Show console output by default
 $IEpopuppath         = "hkcu:\Software\Microsoft\Internet Explorer\New Windows"                      #Registry path for IE popup blocker configuration
 $protectedModeValues = @{}                                                                           #Array for storing initial Protected Mode settings
 $autoProtectedMode   = $True                                                                         #Automatically temporarily disable IE Protected Mode if it is enabled
-$userIEzones = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
-$machineIEzones = "HKLM:\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
-
+$userIEzones         = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
+$machineIEzones      = "HKLM:\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"
+$IE                  = $null
+#endregion
 
 #Hide console it parameter found
 if($hideConsole){
@@ -300,45 +301,71 @@ function Get-ProcessAll{
     if($Processes){return $true} else {return $flase}   
 }
 
-function openIE {                                                        #Function for opening IE and navigating to View in File Explorer URL         
-        
+function openIE {                   #Function for opening IE and navigating to View in File Explorer URL         
+    param (
+        [Switch]$unprotected        #Parametr to switch between default and unprotected mode                                     
+    )    
     try {
         
-        log -text "Opening library in View in File Explorer mode"                                            #Inform user
-
-        $IE=new-object -com internetexplorer.application                                                     #Create IE object
-        $IE.visible = $debugMode                                                                             #Hide IE window if not in debug mode
-        
-        $IE.navigate2("about:blank")                                                                         #This is added for compatibility with Windows 10 v1709 - for some reason, IE fails to open FileExplrorer URL when there is no IE window opened before
-        sleep -s 1                                                                                           #Give time to open IE                                                                  
-        
-        $IE.navigate2($URL)                                                                                  #Navigate to View in File Explorer URL
-        $IE.visible = $debugMode                                                                             #Hide IE window if not in debug mode
-   
-        #do  {$done  = closeFileExplorerWindow} while (!$done)                                                #Loop for checking if library already open. Check for the library window, set process state. Repeat if process state not done, quit loop if done
-        closeFileExplorerWindow
-
-        if($IE.HWND -eq $null){                                                                                     
-            if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                             #Write dubg log
-            killIE                                                                                           #Kill IE processes if HWDN not found for the IE object  
-        } else {
-            if ($debugMode) {log -text "IE.HWND found - Quitting IE gracefully" -debugg}                     #Write dubg log
-            $IE.Parent.Quit()
+        if(!$unprotected){          #Execute with or without changing user's Protected Mode settings based on parameter
             
-            if($protectedMode){
-                if ($debugMode) {log -text "Kiling IE anyway as URL in Zone with Protected Mode on" -debugg} #Write dubg log
-                killIE                                                                                       #Kill IE despite of callin Quite method on the COM object (Quit does not work if URL is in the Zone with protected mode on). This can be removed once base URL is added to Trusted Sites where protected mode is off.
-                }                                                             
-        }
+            log -text "Opening library in View in File Explorer mode"                                         #Inform user
+            if($debugMode){log -text "No changes to the IE protected mode" -debugg}
+            
+            
+            $script:IE.navigate2("about:blank")                                                 #This is added for compatibility with Windows 10 v1709 and protected mode - for some reason, IE fails to open FileExplrorer URL when there is no IE window opened before
+            sleep -s 1                                                                          #Give time to open IE                                                                  
+
+            $script:IE.navigate2($URL)                                                          #Navigate to View in File Explorer URL
+            $script:IE.visible = $debugMode                                                     #Hide IE window if not in debug mode
+
+            if(closeFileExplorerWindow) {return $true}else{return $false}
+
+        }else{
+              disableProtectedMode   
+                                                                                                #disable protected mode temporarily
+              #code to check if ie running and killing
+              
+              $script:IE.navigate2($URL)                                                        #Navigate to View in File Explorer URL
+              $script:IE.visible = $debugMode                                                   #Hide IE window if not in debug mode
+
+              #code to navigate through web pages
+
+              if(closeFileExplorerWindow) {
+                revertProtectedMode                                                             #Revert to original Protected Mode settigns
+                return $true
+                }else{
+                revertProtectedMode                                                             #Revert to original Protected Mode settigns
+                return $false}
+              
+        }    
 
     }catch{
         $ErrorMessage = $_.Exception.Message
         log -text ("Failed to manage Internet Explorer:") -fout
         log -text $ErrorMessage -fout
+        if($unprotected){revertProtectedMode}
         killIE      
-        ExitScript
+        Return $false
     }
 }
+
+function closeIE{
+
+    if($script:IE.HWND -ne $null){                                                                                     
+        if ($debugMode) {log -text "IE.HWND found - Quitting IE gracefully" -debugg}                      #Write dubg log
+        $script:IE.Parent.Quit()                                                                                                        #Kill IE processes if HWDN not found for the IE object  
+    } else {
+        if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                              #Write dubg log
+        killIE                                   
+    }
+
+
+    $test = Get-ProcessAll iexplore
+    if(!$test){return $true}else{return killIE}
+
+}
+
 
 function killIE {
     Stop-Process -Name iexplore                                           #Kill IE processes
@@ -463,14 +490,14 @@ function closeFileExplorerWindow {                                        #Funct
     }
 
     log -text "Timout: Failed to find open library" -fout
-    exitScript
+    return $false
 
 
     }catch{
     $ErrorMessage = $_.Exception.Message
     log -text ("Failed to manage Library in File Explorer:") -fout
     log -text $ErrorMessage -fout
-    exitScript
+    return $false
     }
 }
 
@@ -742,7 +769,7 @@ if ($libraryName -ne $null) {                                                   
             } else {
                  
                 if(Get-ProcessAll iexplore){                                                                          #Check if IE already running
-                    $timeout = New-TimeSpan -seconds 5                                                                #Set timout
+                    $timeout = New-TimeSpan -seconds 120                                                              #Set timout
                     log -text "Internet Explorer already open, close all windows Internet Explorer windows" -fout     #Prompt user for closing IE
                     log -text "Script will terminate in $timeout otherwise" -fout
                     $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
@@ -759,19 +786,38 @@ if ($libraryName -ne $null) {                                                   
                     }
                 }
 
-                $protectedmode = checkProtectedModeGPO                          #Check if IE Protected mode set via GPO
-                disableProtectedMode                                            #Disbale Protected mode via user settings 
-                IEpopup                                                         #Configrue IE popup blocker
-                openIE                                                          #Open library in IE, with View in File Explorer URL                 
-                log -text "You can now use mapped drives. Terminating"          #Inform user
+                IEpopup                                                               #Configrue IE popup blocker
+                $gpoProtectedmode = checkProtectedModeGPO                             #Check if IE Protected mode set via GPO
+                if(!$gpoProtectedMode){                                               #If IE Protected mode not set in GPO
+                    if($debugMode){log -text "Prtoected mode IS NOT set via GPO. Protected Mode override functions ARE available" -warning}
+                }else{
+                    if($debugMode){log -text "Prtoected mode IS set via GPO. Protected Mode override functions ARE NOT available" -warning}
+                    }
+
+
+                $global:IE = new-object -com internetexplorer.application             #Create IE object
+                $script:IE.visible = $debugMode                                       #Hide IE window if not in debug mode
+
+                $firsttry = OpenIE                                                    #First try with not changes to the protected mode
+                $firsttry = $fasle
+                closeIE
+
+                if(($firsttry -ne $True) -and $autoProtectedMode){
+                    if($debugMode){log -text "Failed to process with current user configruation. Re-trying with protected mode disabled" -warning}
+                        $global:IE = new-object -com internetexplorer.application     #Create IE object
+                        $script:IE.visible = $debugMode                               #Hide IE window if not in debug mode
+                        openIE -unprotected                                           #Check if process succeeded with current configuration. Re-try with Protected Mode override
+                        closeIE
+                }else{
+                    closeIE
+                    log -text "You can now use mapped drives. Terminating"}           #Inform user
                 } 
                          
 } else {
                     log -text "No Library mapping found. Terminating" -warning
                     }
     
-          
-revertProtectedMode                                                             #Revert to original Protected Mode settigns
+
 ExitScript
 
 
