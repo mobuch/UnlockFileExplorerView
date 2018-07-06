@@ -309,7 +309,7 @@ function openIE {                   #Function for opening IE and navigating to V
         
         if(!$unprotected){          #Execute with or without changing user's Protected Mode settings based on parameter
             
-            log -text "Opening library in View in File Explorer mode"                                         #Inform user
+            log -text "Opening library in View in File Explorer mode"                           #Inform user
             if($debugMode){log -text "No changes to the IE protected mode" -debugg}
             
             
@@ -322,14 +322,12 @@ function openIE {                   #Function for opening IE and navigating to V
             if(closeFileExplorerWindow) {return $true}else{return $false}
 
         }else{
-              disableProtectedMode   
-                                                                                                #disable protected mode temporarily
-              #code to check if ie running and killing
-              
+              disableProtectedMode                                                              #disable protected mode temporarily
+                                                                                                
               $script:IE.navigate2($URL)                                                        #Navigate to View in File Explorer URL
               $script:IE.visible = $debugMode                                                   #Hide IE window if not in debug mode
 
-              #code to navigate through web pages
+              logonProcess                                                                      #Initiate automated logon process
 
               if(closeFileExplorerWindow) {
                 revertProtectedMode                                                             #Revert to original Protected Mode settigns
@@ -365,7 +363,6 @@ function closeIE{
     if(!$test){return $true}else{return killIE}
 
 }
-
 
 function killIE {
     Stop-Process -Name iexplore                                           #Kill IE processes
@@ -405,6 +402,36 @@ try{
     log -text $ErrorMessage -fout
     exitScript
 
+    }
+}
+
+function logonProcess{
+#Function to browse the portal pages and login without user interaction
+    if($script:IE.LocationURL -ne $URL){
+      if($debugMode){log -text "IE landed on logon page. Logon process activated" -debugg}  
+      ####
+      #code to process user logon
+      ###
+    }
+
+}
+
+function getElementById{
+    Param(
+        [Parameter(Mandatory=$true)]$id
+    )
+    $localObject = $Null
+    try{
+        $localObject = $script:ie.document.getElementById($id)
+        if($localObject.tagName -eq $Null){Throw "The element $id was not found (1) or had no tagName"}
+        return $localObject
+    }catch{$localObject = $Null}
+    try{
+        $localObject = $script:ie.document.IHTMLDocument3_getElementById($id)
+        if($localObject.tagName -eq $Null){Throw "The element $id was not found (2) or had no tagName"}
+        return $localObject
+    }catch{
+        Throw
     }
 }
 
@@ -799,12 +826,15 @@ if ($libraryName -ne $null) {                                                   
                 $script:IE.visible = $debugMode                                       #Hide IE window if not in debug mode
 
                 $firsttry = OpenIE                                                    #First try with not changes to the protected mode
-                $firsttry = $fasle
                 closeIE
+
+                if($Debugmode){
+                    $firsttry = $fasle
+                    log -text "Simulating first logon try as failed to force fallbak to Protected Mode overwrite functions" -debugg
 
                 if(($firsttry -ne $True) -and $autoProtectedMode){
                     if($debugMode){log -text "Failed to process with current user configruation. Re-trying with protected mode disabled" -warning}
-                        $global:IE = new-object -com internetexplorer.application     #Create IE object
+                        $script:IE = new-object -com internetexplorer.application     #Create IE object
                         $script:IE.visible = $debugMode                               #Hide IE window if not in debug mode
                         openIE -unprotected                                           #Check if process succeeded with current configuration. Re-try with Protected Mode override
                         closeIE
