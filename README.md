@@ -17,7 +17,7 @@
 		This mode is for troubleshooting issues.
 		It will make all windows and actions visible to the user
 		It will execute entire script even if the user has the mapped drive already unlocked
-		The script will pause and wait for keystroke when View in File Explorer URL  is open in IE and Library accessible in Windows Explorer.     This to allow to see and troubleshoot the URLs and windows’ states.
+		The script will pause and wait for keystroke when View in File Explorer URL  is open in IE and Library accessible in Windows Explorer. This to allow to see and troubleshoot the URLs and windows’ states.
 	3.	Hidden = hidden console, no output to the user
 		This is a mode for the case where we want to hide the console output from the user but keep logging information to the log file
 
