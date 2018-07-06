@@ -5,9 +5,9 @@
 1.	Download zip archive
 2.	Unpack zip archive
 3.	Launch one of the 3 batch files:
-	a.	Launch UnlockFileExplorerView0.6.6 in Normal mode.bat
-	b.	Launch UnlockFileExplorerView0.6.6 in Debug mode.bat
-	c.	Launch UnlockFileExplorerView0.6.6 in Hidden mode.bat
+	* Launch UnlockFileExplorerView0.6.6 in Normal mode.bat
+	* Launch UnlockFileExplorerView0.6.6 in Debug mode.bat
+	* Launch UnlockFileExplorerView0.6.6 in Hidden mode.bat
 
 
 ## The script can be launched in 3 modes:
