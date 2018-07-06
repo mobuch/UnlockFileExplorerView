@@ -1,6 +1,6 @@
 # UnlockFileExplorerView
 
-#Usage:
+## Usage:
 
 1.	Download zip archive
 2.	Unpack zip archive
@@ -10,7 +10,7 @@
 	c.	Launch UnlockFileExplorerView0.6.6 in Hidden mode.bat
 
 
-#The script can be launched in 3 modes:
+## The script can be launched in 3 modes:
 	1.	Normal = regular output to the console window and the log file
 		This is a mode for the case where we want to show the user current state of the unlocking process
 	2.	Debug   = extended output to the console window and the log file
@@ -21,5 +21,5 @@
 	3.	Hidden = hidden console, no output to the user
 		This is a mode for the case where we want to hide the console output from the user but keep logging information to the log file
 
-#Log file location:
+## Log file location:
 	%appdata%\UnlockFileExplorerView_<version>.log	
