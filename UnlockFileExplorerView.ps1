@@ -100,9 +100,9 @@
 #5 Implement graphical status bar or window
 ####>
 
-param(
-    [Switch]$hideConsole,                                                            #Show or hide output in the console based on the script parameter
-    [Switch]$debugon                                                                 #Enable debug via parameter        
+param(  
+    [Switch]$hideConsole,                                                                                           #Show or hide output in the console based on the script parameter
+    [Switch]$debugon                                                                                                #Enable debug via parameter        
     )
 
 
@@ -141,6 +141,8 @@ $userIEzones                 = "HKCU:\Software\Microsoft\Windows\CurrentVersion\
 $machineIEzones              = "HKLM:\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\Zones\"  #Location of the computer zones
 $UPN                         = $null                                                                                #Variable for storing user's UPN needed for IE logon functions
 $IE                          = $null                                                                                #Variable for storing IE object
+$startTime                   = Get-Date                                                                             #Variables for logging script execution time
+$endTime                     = $null                                                                                #Variables for logging script execution time
 #endregion
 
 #Hide console it parameter found
@@ -236,18 +238,18 @@ function ResetLog{
     }
 }
 
-function checkDrive ($URL) {                                             #Function for testing current state of access
-    log -text "Testing access state"                                     #Inform user   
-    $result = test-path -path $URL                                       #Test if path accessible
+function checkDrive ($URL) {                                               #Function for testing current state of access
+    log -text "Testing access state"                                       #Inform user   
+    $result = test-path -path $URL                                         #Test if path accessible
     if($DebugMode){log -text ("Testing access state: "+ $URL) -debugg }
 
    if ($result) {
-    log -text "Access enabled"                                   #Inform user
+    log -text "Access enabled"                                             #Inform user
     
     } else {
-        log -text "Access locked, unlock process started" -warning       #Inform user
+        log -text "Access locked, unlock process started" -warning         #Inform user
         }
-   return $result                                                        #Return $True if access already unlocked, $False if access locked
+   return $result                                                          #Return $True if access already unlocked, $False if access locked
    }
 
 function Get-ProcessWithOwner{
@@ -305,13 +307,13 @@ function Get-ProcessAll{
 
 #region IE functions
 
-function openIE {                   #Function for opening IE and navigating to View in File Explorer URL         
+function openIE {                                                                       #Function for opening IE and navigating to View in File Explorer URL         
     param (
-        [Switch]$unprotected        #Parametr to switch between default and unprotected mode                                     
+        [Switch]$unprotected                                                            #Parametr to switch between default and unprotected mode                                     
     )    
     try {
         
-        if(!$unprotected){          #Execute with or without changing user's Protected Mode settings based on parameter
+        if(!$unprotected){                                                              #Execute with or without changing user's Protected Mode settings based on parameter
             
             if($debugMode){log -text "No changes to the IE protected mode" -debugg}
             log -text "Opening library in View in File Explorer mode"                   #Inform user
@@ -365,7 +367,7 @@ function closeIE{
     if($script:protectedModeOverwrite){
         if($debugmode){log -text ("protectedModeOverwrite set to: " + $script:protectedModeOverwrite) -debugg}
         if($debugmode){log -text ("Reverting Protected Mode settings") -debugg}
-        revertProtectedMode                                                                   #Ensure we always revert Protected Mode change
+        revertProtectedMode                                                                                          #Ensure we always revert Protected Mode change
         }else{
             if($debugmode){log -text ("protectedModeOverwrite set to: " + $script:protectedModeOverwrite) -debugg}
             if($debugmode){log -text ("No need to revert Protected Mode settings") -debugg}
@@ -373,30 +375,30 @@ function closeIE{
         }
 
     if($script:IE.HWND -ne $null){                                                                                    
-        if ($debugMode) {log -text "IE.HWND found - Quitting IE gracefully" -debugg}          #Write dubg log
-        $script:IE.Parent.Quit()                                                              #Quit IE processes if HWDN not found for the IE object 
+        if ($debugMode) {log -text "IE.HWND found - Quitting IE gracefully" -debugg}                                 #Write dubg log
+        $script:IE.Parent.Quit()                                                                                     #Quit IE processes if HWDN not found for the IE object 
         $script:IE = $null 
     } else {
-        if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                  #Write dubg log
+        if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                                         #Write dubg log
         killIE                                   
     }
     sleep -s 1
-    $test = Get-ProcessAll iexplore                                                           #Double check if IE not running, kill if Quit did not work
+    $test = Get-ProcessAll iexplore                                                                                  #Double check if IE not running, kill if Quit did not work
     if($test){
         if($debugmode){log -text "IE still running - killing the process" -debugg}    
         killIE
-        }                                                                                     #Kill IE if still working
+        }                                                                                                            #Kill IE if still working
 }
 
 function killIE {
     try{
         sleep -s 1
-        Stop-Process -Name iexplore -ErrorAction SilentlyContinue                                 #Kill IE processes
+        Stop-Process -Name iexplore -ErrorAction SilentlyContinue                                                    #Kill IE processes
         sleep -m 500
-        $IE         = new-object -com internetexplorer.application                                #Open blank IE to get rid off the warning message regarding previous session that was killed above
-        $IE.visible = $debugMode                                                                  #Hide IE window if not in debug mode  
-        while ($IE.busy) {sleep -m 100}                                                           #Give time to open IE
-        $IE.Quit()                                                                                #Quit IE gracefully
+        $IE         = new-object -com internetexplorer.application                                                   #Open blank IE to get rid off the warning message regarding previous session that was killed above
+        $IE.visible = $debugMode                                                                                     #Hide IE window if not in debug mode  
+        while ($IE.busy) {sleep -m 100}                                                                              #Give time to open IE
+        $IE.Quit()                                                                                                   #Quit IE gracefully
         $script:IE = $null
         sleep -Seconds 1
     }catch{
@@ -409,13 +411,10 @@ function IEpopup {
 
 try{
     if($debugMode){log -text ("Testing if IE popup blocker conffigured to allow tenant URL: " + $baseURL) -debugg}
-    
-        #Set-Location ($IEpopuppath)                                                                                #Set location to New Windows key
 
         if(Test-Path ($IEpopuppath+"\Allow")){                                                                      #Test if Allow key already exists
-            #Set-Location ($IEpopuppath + "\Allow")
-                    if((TestRegistryValue -path ($IEpopuppath+"\Allow") -value "$baseURL")){                        #Test if Values already exist
-            if($debugMode){log -text ("IE popup blocker already configured") -debugg}
+            if((TestRegistryValue -path ($IEpopuppath+"\Allow") -value "$baseURL")){                                #Test if Values already exist
+                if($debugMode){log -text ("IE popup blocker already configured") -debugg}
                     }else{
                         New-ItemProperty -Path ($IEpopuppath+"\Allow") -Name "$baseURL" -Type Binary                #Create value                                                                 
                         if($debugMode){log -text 'Added popup blocker exception to existing "Allow" key' -debugg}
@@ -442,7 +441,7 @@ function logonProcess{
     $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
     
     log -text "Waiting for O365 logon page. Timeout: $timeout"    
-    while (($sw.elapsed -lt $timeout) -and ($script:IE.LocationName -ne "Sign in to your account" -and $script:IE.LocationURL -ne $URL)){                                     #wait for IE page to load
+    while (($sw.elapsed -lt $timeout) -and ($script:IE.LocationName -ne "Sign in to your account" -and $script:IE.LocationURL -ne $URL)){   #wait for IE page to load
         write-host -NoNewline "." -ForegroundColor Green
         sleep -s 1
         }
@@ -454,7 +453,7 @@ function logonProcess{
     if($script:IE.LocationName -eq "Sign in to your account"){
       if($debugMode){log -text "IE landed on logon page. Logon process activated" -debugg}  
       
-      $divs = $script:IE.Document.body.getElementsByClassName("row tile")                    #Get div containig accounts names
+      $divs = $script:IE.Document.body.getElementsByClassName("row tile")                             #Get div containig accounts names
     
         #obtain user logon and abort if not found
         getUPN  
@@ -465,12 +464,12 @@ function logonProcess{
             }
 
         foreach ($div in $divs) {
-            if ($div.innerText -like "*$UPN*"){                                                  #Search for entry containing our UPN 
+            if ($div.innerText -like "*$UPN*"){                                                       #Search for entry containing our UPN 
                 log -text "User account found on the logon page"
                 if($debugmode){log -text ($div.innerText) -debugg}
-                $button = $div.getElementsByClassName("table")[0]                                #Get the button
-                $button.click()                                                                  #Click button
-                while ($script:IE.busy) {sleep -m 100}                                                  #Wait for IE
+                $button = $div.getElementsByClassName("table")[0]                                     #Get the button
+                $button.click()                                                                       #Click button
+                while ($script:IE.busy) {sleep -m 100}                                                #Wait for IE
                 break
             }
         
@@ -663,7 +662,7 @@ function getMappedDrives {                                                #Funct
 
         }          
 
-    foreach ($item in $nu) {                                              #Get the first instance (Get-PSDrvive method) or last instance (Net Use method) of the SharePoint Online mapping
+    foreach ($item in $nu) {                                                                         #Get the first instance (Get-PSDrvive method) or last instance (Net Use method) of the SharePoint Online mapping
             if($item -like "*sharepoint.com*") {
                 if ($debugMode){log -text ("NET USE line with *sharepoint.com*: " + $item) -debugg}  #Write debug log
                 $item = $item -split ":"                  #Split to get rid off drive letter
@@ -673,12 +672,12 @@ function getMappedDrives {                                                #Funct
                 switch ($item.length) {
                     2 {
                         $mp = $item[1].trim()
-                        $mappingFormat = "UNC"           #Format: \\<tenanturl>@SSL\sites\EMEA-TSG\Shared Documents
+                        $mappingFormat = "UNC"                                                       #Format: \\<tenanturl>@SSL\sites\EMEA-TSG\Shared Documents
                         if($debugMode){log -text("Mapped drive in UNC format: "+ $mp) -debugg}
                         }                                
                     3 {
                         $mp = $item[2].trim()
-                        $mappingFOrmat = "URL"           #Format: https://<tenanturl>/sites/EMEAITManagement/Shared Documents
+                        $mappingFOrmat = "URL"                                                       #Format: https://<tenanturl>/sites/EMEAITManagement/Shared Documents
                         if($debugMode){log -text("Mapped drive in URL format: "+$mp) -debugg}
                         }
                     default {
@@ -729,7 +728,7 @@ function getMappedDrives {                                                #Funct
                 }                              
         
         }
-        if ($array.length -gt 1) {$array = $array | ? {$_}}       #delete empty elements if more than 1 element exist
+        if ($array.length -gt 1) {$array = $array | ? {$_}}      #delete empty elements if more than 1 element exist
     
             switch ($array.length){                              #Extract variables based on the array length
         
@@ -780,8 +779,10 @@ function getMappedDrives {                                                #Funct
 }
 
 function ExitScript{
-    log -text "******** End log ********"
     Start-Sleep -s 5         #Give time to read the script
+    $endTime = get-date
+    if($debugMode){log -text ("Script execution time: " + ($endTime - $startTime)) -debugg}
+    log -text "******** End script: $endTime ********"
     exit
     }
 
@@ -796,7 +797,7 @@ function GetUPN{
         $objUser = $objPath.GetDirectoryEntry()                                    #bind to our AD user
         $script:UPN = $objUser.userprincipalname
         if($script:UPN){log -text ("O365 logon name (UPN) found: " + $script:UPN)}
-        $script:UPN=$objUser.userprincipalname                                          #return UPN
+        $script:UPN=$objUser.userprincipalname                                     #return UPN
         }catch{
             log -text "Failed to obtain user's logon name for O365 (UPN)" -fout
             return $false
@@ -809,13 +810,13 @@ function GetUPN{
 
 ResetLog #Reset log :P
 
-log -text "******** Start log ********"
+log -text "******** Start script: $startTime ********"
 
 if($debugMode){log -text "Debug Mode enabled" -warning}
 
 
 #Check connections and current access state
-if (testConnection $dcName "Corporate network") {                                #Check connection to the logon server, abort if fails
+if (testConnection $dcName "Corporate network") {                                  #Check connection to the logon server, abort if fails
 #proceed
 }else{
     log -text ("Not connected to the Corporate network") -fout
@@ -843,7 +844,7 @@ $mappingFOrmat = $Return[6]
 $subfolders    = $Return[7]
 
 
-if (testConnection $baseURL "SharePoint Online Servers") {                       #Check connection to the SharePoint Online server, abort if fails
+if (testConnection $baseURL "SharePoint Online Servers") {                         #Check connection to the SharePoint Online server, abort if fails
 #proceed    
 }else{
     log -text ("No connection to the SharePoint Online Servers") -fout
@@ -856,7 +857,7 @@ if (testConnection $baseURL "SharePoint Online Servers") {                      
 try {
     if ($driveMapped -eq $null) {                                              
             log -text "No SharePoint mapping found. Terminating" -warning
-            exitScript                                                          #Exit script
+            exitScript                                                             #Exit script
         }else{
 
             #Display collected information
@@ -880,7 +881,7 @@ try {
 
 
 #Proceed only if libary found in the mapped drive
-if ($libraryName -ne $null) {                                          #Stop if no SharePoint or no library found
+if ($libraryName -ne $null) {                                                      #Stop if no SharePoint or no library found
     
     #Build File Explorer View URL.
     $URL       = "https://" + $baseURL + "/sites/" + $lob2 + $siteName2 + $libraryName2 + $urlOptions + "%2Fsites" + ($lob -replace '-','%2D') + "%2F" + ($siteName -replace " ","%2D") +"%2F" + ($libraryName.TrimEnd('/') -replace " ", "%20")   #Build URL for opening in View in File Explorer mode
@@ -895,16 +896,16 @@ if ($libraryName -ne $null) {                                          #Stop if 
                     }
 
 
-$unlocked = checkDrive ($mappedURL)                                   #Check the current state of access and store in the $Unlocked variable                          
+$unlocked = checkDrive ($mappedURL)                                                #Check the current state of access and store in the $Unlocked variable                          
 
 #Overwirte access test result if in Debug mode    
 if ($debugMode) {
-    $unlocked = $false                                                #Set the access state to $False if in DEbug mode. This allows testing entire scritpt
+    $unlocked = $false                                                             #Set the access state to $False if in DEbug mode. This allows testing entire scritpt
     log -text 'Debug mode: setting up $unlocked to $False for testing' -warning
     }                                   
             
-if ($unlocked) {                                                      #Check if access already enabled, terminate if yes
-    log -text "You can now use mapped drives. Terminating"            #Inform user
+if ($unlocked) {                                                                   #Check if access already enabled, terminate if yes
+    log -text "You can now use mapped drives. Terminating"                         #Inform user
     ExitScript
     }
 
@@ -961,7 +962,7 @@ if(Get-ProcessAll iexplore){                                          #Close it 
 
 if(($firsttry -ne $True) -and $autoProtectedMode -and !$GPOprotectedMode){
     if($debugMode){log -text "Failed to process with current user configruation. Re-trying with protected mode disabled" -warning}
-        $secondtry = openIE -unprotected                                           #Check if process succeeded with current configuration. Re-try with Protected Mode override
+        $secondtry = openIE -unprotected                              #Check if process succeeded with current configuration. Re-try with Protected Mode override
         closeIE
         if(!$secondtry){log -text "Unexpected result of the second logon attempt, re-evaluating to obtain current access state" -warning}
 }
