@@ -7,8 +7,8 @@
 #Copyright:         Free to use, please leave this header intact
 #Author:            Marek Obuchowski (http://www.mobuchowski.pl)
 #Credits:           EMEA Territory Services Team for all the bits and pieces that allowed this script to be created
-#Credits:           Jos Lieben (http://www.lieben.nu http://www.ogd.nl) OneDriveMapper creator for sharing his awesome work
-#Purpose:           To atomate opening SharePoint Online library in IE so the user is autoamtically authenticated and mapped drives unlocked
+#Credits:           Jos Lieben (http://www.lieben.nu http://www.ogd.nl) OneDriveMapper creator for sharing his excellent work
+#Purpose:           To automate opening SharePoint Online library in IE, so the user is automatically authenticated and mapped drives unlocked
 
 ##############################################
 
@@ -23,8 +23,8 @@
 
 
 ####0.2
-#1 Testing connectivity to SharePoint and DC (for ensuring we are on corporate network)
-#2 Auto discovery of mapped SharePoint libraries now replaced hardcoded paths
+#1 Testing connectivity to SharePoint and DC (for ensuring we are on a corporate network)
+#2 Auto-discovery of mapped SharePoint libraries now replaced hardcoded paths
 
 ####0.3
 #hmm... not sure
@@ -41,8 +41,8 @@
 
 ####0.6
 #1 Hardcoded DC replaced with current logon server
-#2 BaseURL building code updated - script now extract it from the mapped library, this mean that script can be used with any SharePoint tenant now
-#3 Typos in commnets now corrected.. oh yeah!!
+#2 BaseURL building code updated - script now extract it from the mapped library, this means that script can be used with any SharePoint tenant now
+#3 Typos in comments now corrected.. oh yeah!!
 
 ####0.6.1
 #hmm... not sure
@@ -53,14 +53,14 @@
 #Startign rewiriting IE handling
 
 ####0.6.3
-#1 Rewriteen IE handling
-#   -Checking if IE is snadboxed by Protected View
-#   -Added fucntion to kill IE if sandboxed
+#1 Rewritten IE handling
+#   -Checking if Protected View sandboxes IE
+#   -Added function to kill IE if sandboxed
 
 ####0.6.4
-#1 Added support for two mapping fomrats: UNC and URL
+#1 Added support for two mapping formats: UNC and URL
 #2 Code cleanup
-#   -moved part of the URLs building code to getMappedDrives function so it sits with within one function
+#   -moved part of the URLs building code to getMappedDrives function, so it sits with within one function
 
 #0.6.5
 #1 Fixed the issue with building File explorer URL for mapped drives with library sub-folders
@@ -72,22 +72,22 @@
 #4 Added support for hiding the console entirely
 
 #0.6.7
-#1 Updated network and sharepoint connectivity test and result logging
-#2 Removed unnecesary clutter form Error messages
+#1 Updated network and SharePoint connectivity test and result logging
+#2 Removed unnecessary clutter form Error messages
 
 #0.6.8
 #1 Fixed typos
-#2 Registry path varaible defined as global now
-#3 Added code to check presence of the registry keys for setting up popup blocker
-#4 Added timout fr waiting for Library window in Windows Explorer
-#5 Re-rder testing conenction and discover drives code, drives first, test later
+#2 Registry path variables defined as global now
+#3 Added code to check the presence of the registry keys for setting up popup blocker
+#4 Added timeout for waiting for Library window in Windows Explorer
+#5 Re-order testing connection and discover drives code, drive first, test later
 
 #0.7.0
 #1 Added functions for checking if given process is running
 #2 Added code to manage Protected Mode settings - needed for future
-#3 Waiting for IE to be closed added with timeout
-#4 Add code to evalueate the output of IE browsing
-#5 Add logon code if user not logged in automatically
+#3 Waiting for IE to be closed added with a timeout
+#4 Add code to evaluate the output of IE browsing
+#5 Add login code if user not logged in automatically
 #>
 
 
@@ -163,7 +163,7 @@ function log{
     -------------------------------------------------------------------------------------------
     Manage the local log file size
     Always keep a backup
-    #credits to OneDriveMapper creator
+    #credits to the OneDriveMapper creator
     -------------------------------------------------------------------------------------------
     #>
     param (
@@ -322,7 +322,7 @@ function openIE {                                                               
             $script:IE = new-object -com internetexplorer.application                   #Create IE object
             $script:IE.visible = $debugMode                                             #Hide IE window if not in debug mode
             
-            $script:IE.navigate2("about:blank")                                         #This is added for compatibility with Windows 10 v1709 and protected mode - for some reason, IE fails to open FileExplrorer URL when there is no IE window opened before
+            $script:IE.navigate2("about:blank")                                         #This is added for compatibility with Windows 10 v1709 and protected mode - for some reason, IE fails to open file explorer URL when there is no IE window opened before
             sleep -s 2                                                                  #Give time to open IE                                                                  
 
             $script:IE.navigate2($URL)                                                  #Navigate to View in File Explorer URL
@@ -645,7 +645,7 @@ function testConnection ($a, $type) {                                     #Funct
     return $test                                                          #Return results
     }
 
-function getMappedDrives {                                                #Function for getting mapped Sharepoint drives and setting up library for opening in View in File Explorer mode
+function getMappedDrives {                                                #Function for getting mapped Sharepoint drives and setting up the library for opening in View in File Explorer mode
 
     #Get-PSDrive method replaced with NET USE
     #Get-PSDrive does not return mapped drives on some machines, Net Use does not have this issue
@@ -750,7 +750,7 @@ function getMappedDrives {                                                #Funct
                     $tempLib   = $array[2]
                     }
 
-                default {#Library mapped with subfodlers
+                default {#Library mapped with subfolders
                     $tempLOB  = $array[0]
                     $tempSite = $array[1]
                     $tempLib  = $array[2]
@@ -880,7 +880,7 @@ try {
 }
 
 
-#Proceed only if libary found in the mapped drive
+#Proceed if library found in the mapped drive
 if ($libraryName -ne $null) {                                                      #Stop if no SharePoint or no library found
     
     #Build File Explorer View URL.
@@ -909,7 +909,7 @@ if ($unlocked) {                                                                
     ExitScript
     }
 
-#Ensure no IE processes are running before starting our own instance
+#Ensure no IE processes are running before starting our instance
 if(Get-ProcessAll iexplore){                                                                          #Check if IE already running
     $timeout = New-TimeSpan -seconds 120                                                              #Set timout
     log -text "Internet Explorer already open, close all windows Internet Explorer windows" -fout     #Prompt user for closing IE
@@ -932,7 +932,7 @@ if(Get-ProcessAll iexplore){                                                    
 #Configrue IE popup blocker
 IEpopup                                                               
 
-#First attempt with not changes to the protected mode
+#First attempt with no changes to the protected mode
 log -text "First attempt to unlock the drives"
 $firsttry = OpenIE                                                    
 closeIE
@@ -949,7 +949,7 @@ if(!$gpoProtectedMode){                                               #If IE Pro
     if($debugMode){log -text "Prtoected mode IS NOT set via GPO. Protected Mode override functions ARE available" -debugg}
 }else{
     if($debugMode){log -text "Prtoected mode IS set via GPO. Protected Mode override functions ARE NOT available" -fout
-        log -text "Unable to proceed with second attempt due to the company policy applied to the computer" -fout
+        log -text "Unable to proceed with the second attempt due to the company policy applied to the computer" -fout
         log -text "Terminating script" -fout
         exitScript
         }
