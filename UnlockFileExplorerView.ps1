@@ -78,9 +78,10 @@
 #0.6.8
 #1 Fixed typos
 #2 Registry path variables defined as global now
-#3 Added code to check the presence of the registry keys for setting up popup blocker
-#4 Added timeout for waiting for Library window in Windows Explorer
-#5 Re-order testing connection and discover drives code, drive first, test later
+#3 Moved IE popup configuration to function
+#4 Added code to check the presence of the registry keys for setting up popup blocker
+#5 Added timeout for waiting for Library window in Windows Explorer
+#6 Re-order testing connection and discover drives code, drive first, test later
 
 #0.7.0
 #1 Added functions for checking if IE process is running bbefore we start our own instances
@@ -88,7 +89,7 @@
 #3 Add code to evaluate the output of IE browsing
 #4 Add login code if user not logged in automatically
 #5 Added code to manage Protected Mode settings
-#6 Added mapped drives optimizaion/conversion from URL to UNC 
+#6 Added mapped drives optimization/conversion from URL to UNC 
 #>
 
 
