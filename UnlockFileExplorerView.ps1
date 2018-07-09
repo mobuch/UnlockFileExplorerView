@@ -83,11 +83,12 @@
 #5 Re-order testing connection and discover drives code, drive first, test later
 
 #0.7.0
-#1 Added functions for checking if given process is running
-#2 Added code to manage Protected Mode settings - needed for future
-#3 Waiting for IE to be closed added with a timeout
-#4 Add code to evaluate the output of IE browsing
-#5 Add login code if user not logged in automatically
+#1 Added functions for checking if IE process is running bbefore we start our own instances
+#2 Waiting for IE to be closed added with a timeout
+#3 Add code to evaluate the output of IE browsing
+#4 Add login code if user not logged in automatically
+#5 Added code to manage Protected Mode settings
+#6 Added mapped drives optimizaion/conversion from 
 #>
 
 
@@ -98,6 +99,7 @@
 #3 Implement Native authenitcation rather than IE
 #4 Implement 2fa login in IE mode
 #5 Implement graphical status bar or window
+#6 Integrate mapped drives discovert and mapped drives optimization into one
 ####>
 
 param(  
@@ -321,11 +323,13 @@ function openIE {                                                               
             #Start IE instance
             $script:IE = new-object -com internetexplorer.application                   #Create IE object
             $script:IE.visible = $debugMode                                             #Hide IE window if not in debug mode
-            
+
             $script:IE.navigate2("about:blank")                                         #This is added for compatibility with Windows 10 v1709 and protected mode - for some reason, IE fails to open file explorer URL when there is no IE window opened before
             sleep -s 2                                                                  #Give time to open IE                                                                  
+            
 
             $script:IE.navigate2($URL)                                                  #Navigate to View in File Explorer URL
+            $script:IE.visible = $debugMode                                             #Hide IE window if not in debug mode
             sleep -s 2
 
             if(closeFileExplorerWindow) {return $true}else{return $false}
@@ -705,7 +709,8 @@ function getMappedDrives {                                                #Funct
         if($DebugMode){log -text ("tempBaseURL extracted from tempMappedURL: " + $tempBaseURL) -debugg}
         $tempBaseURL       = $tempBaseURL.Substring(2)
         if($DebugMode){log -text ("tempBaseURL with removed two initial charactes: " + $tempBaseURL) -debugg}        
-        $tempBaseURL       = $tempBaseURL.TrimEnd('@SSL\')
+        $tempBaseURL       = $tempBaseURL -replace ('@SSL',"")
+        $tempBaseURL       = $tempBaseURL -replace ('\\',"")
         if($DebugMode){log -text ('tempBaseURL with removed trailing "@SSL\": '+$tempBaseURL) -debugg}
         
         $tmp               = $array[1]                                                                            #extract site part
@@ -778,6 +783,36 @@ function getMappedDrives {                                                #Funct
     $tempLibWithSubFold
 }
 
+function UpdateNetworkMappings {
+
+log -text "Optimizing mapped drives for View in File Explorer functionality"
+
+try{
+    if($debugmode){log -text "Trying to convert all URL mappings to UNC mappings" -debugg}
+    Push-Location                                                                                             #store current location
+    Get-ChildItem HKCU:\Network | ForEach-Object {                                                            #list all mappings in HCKU:\Network and loop throuch each object
+       $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                    #build registry location path for each mapping
+       set-location $temploc                                                                                  #set location to each mapping
+       $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"           #store old path
+       if ($oldpath -like "https:*sharepoint.com*"){                                                          #if old path contains https://*sharepoint.com*
+            if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
+            $newpath = (($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites'           #transform it into unc
+            if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                          #and set the value to new unc path
+        }elseif($oldpath -like "http:*sharepoint.com*"){                                                      #if old path contains http://*sharepoint.com*  
+            if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
+            $newpath = (($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites'            #transform it into unc
+            if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                          #and set the value to new unc path
+        }
+       }
+    Pop-Location
+    log -text "Mapped drives optimized"
+    }catch{
+     if($debugmode){log -text "Errors while converting URL mappings into the UNC mappins" -fout}
+    }
+}
+
 function ExitScript{
     Start-Sleep -s 5         #Give time to read the script
     $endTime = get-date
@@ -844,15 +879,6 @@ $mappingFOrmat = $Return[6]
 $subfolders    = $Return[7]
 
 
-if (testConnection $baseURL "SharePoint Online Servers") {                         #Check connection to the SharePoint Online server, abort if fails
-#proceed    
-}else{
-    log -text ("No connection to the SharePoint Online Servers") -fout
-    exitScript
-    }
-
-
-
 #Check if SharePoint mapping present, exit if not
 try {
     if ($driveMapped -eq $null) {                                              
@@ -883,6 +909,18 @@ try {
 #Proceed if library found in the mapped drive
 if ($libraryName -ne $null) {                                                      #Stop if no SharePoint or no library found
     
+    if (testConnection ($baseURL) "SharePoint Online Servers") {                         #Check connection to the SharePoint Online server, abort if fails
+    #proceed    
+    }else{
+        log -text ("No connection to the SharePoint Online Servers") -fout
+        if($debugon){log -text ("SharePoint URL: " + $baseURL) -debugg}
+        exitScript
+        }
+
+    #Convert URL mappigns into UNC mappings
+    UpdateNetworkMappings
+
+
     #Build File Explorer View URL.
     $URL       = "https://" + $baseURL + "/sites/" + $lob2 + $siteName2 + $libraryName2 + $urlOptions + "%2Fsites" + ($lob -replace '-','%2D') + "%2F" + ($siteName -replace " ","%2D") +"%2F" + ($libraryName.TrimEnd('/') -replace " ", "%20")   #Build URL for opening in View in File Explorer mode
     
