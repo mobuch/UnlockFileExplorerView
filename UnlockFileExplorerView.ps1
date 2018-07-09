@@ -84,12 +84,12 @@
 #6 Re-order testing connection and discover drives code, drive first, test later
 
 #0.7.0
-#1 Added functions for checking if IE process is running bbefore we start our own instances
+#1 Added functions for checking if IE process is running before we start our own instances
 #2 Waiting for IE to be closed added with a timeout
 #3 Add code to evaluate the output of IE browsing
 #4 Add login code if user not logged in automatically
 #5 Added code to manage Protected Mode settings
-#6 Added mapped drives optimization/conversion from URL to UNC 
+#6 Added mapped drives optimization/conversion from URL to UNC
 #>
 
 
