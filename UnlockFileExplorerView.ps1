@@ -88,7 +88,7 @@
 #3 Add code to evaluate the output of IE browsing
 #4 Add login code if user not logged in automatically
 #5 Added code to manage Protected Mode settings
-#6 Added mapped drives optimizaion/conversion from 
+#6 Added mapped drives optimizaion/conversion from URL to UNC 
 #>
 
 
