@@ -445,7 +445,7 @@ function logonProcess{
     $timeout = New-TimeSpan -Seconds 30                                   #Set timout
     $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
     
-    log -text "Waiting for O365 logon page. Timeout: $timeout"    
+    log -text ("Waiting for O365 logon page. Timeout: $timeout" + " [hh:mm:ss]")    
     while (($sw.elapsed -lt $timeout) -and ($script:IE.LocationName -ne "Sign in to your account" -and $script:IE.LocationURL -ne $URL)){   #wait for IE page to load
         write-host -NoNewline "." -ForegroundColor Green
         sleep -s 1
@@ -470,39 +470,53 @@ function logonProcess{
 
         foreach ($div in $divs) {
             if ($div.innerText -like "*$UPN*"){                                                       #Search for entry containing our UPN 
-                log -text "User account found on the logon page"
+                log -text "User account found on the logon page. Initiaiting logon"
                 if($debugmode){log -text ($div.innerText) -debugg}
                 $button = $div.getElementsByClassName("table")[0]                                     #Get the button
-                $button.click()                                                                       #Click button
-                while ($script:IE.busy) {sleep -m 100}                                                #Wait for IE
-                break
+                $button.click()                                                                       #Click button 
+                break       
             }
-        
-            if($script:IE.LocationURL -ne $URL){
-                log -text "Unknown page opened after logging to the O365" -fout
-                if($debugMode){
-                    log -text ("IE landed on this Location Name: " + $script:IE.locationname) -debugg
-                    log -text ("IE landed on this Location URL: " + $script:IE.locationurl) -debugg
-                }
-                log -text "Terminating script" -fout
-
-                closeIE
-                exitScript
-            }else{log -text "View in File Explorer URL loaded`nWaiting for library to open in Windows Explorer"}
         }
+    }
 
+
+    $timeout = New-TimeSpan -Seconds 30                                                               #Set timout
+    $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
+                
+    log -text ("Timeout: " + $timeout +" [hh:mm:ss]")
+    while (($sw.elapsed -lt $timeout) -and ($script:IE.LocationURL -ne $URL)) {                       #Wait for IE to land on the view in file explorer url
+        Write-Host -NoNewline -ForegroundColor Green "."
+        sleep -s 1
+        } 
+    $sw.stop()
+    write-host ""
+    if($sw.elapsed -gt $timeout){log -text "Timout reached, process may fail if library not found open in the next stage" -warning}
+
+
+    if($script:IE.LocationURL -ne $URL){
+        log -text "Unknown page opened after logging to the O365" -fout
+        if($debugMode){
+            log -text ("IE landed on this Location Name: " + $script:IE.locationname) -debugg
+            log -text ("IE landed on this Location URL: " + $script:IE.locationurl) -debugg
+        }
+        log -text "Terminating script" -fout
+        closeIE
+        exitScript
     }elseif($script:IE.LocationURL -eq $URL){
-        log -text "Logged in to O365 automaticaly"
-        }else{
-            log -text "IE landed on unexpected page" -fout
-            if($debugMode){
-                log -text ("Failed to open O365 logon page") -debugg
-                log -text ("IE landed on this Location Name: " + $script:IE.locationname) -debugg
-                log -text ("IE landed on this Location URL: " + $script:IE.locationurl) -debugg
-                closeIE
-                ExitScript
-            }
+        log -text "Logged in to O365"
+        log -text "View in File Explorer URL loaded"
+        log -text "Waiting for library to open in Windows Explorer"
         }
+        
+        #else{
+        #    log -text "IE landed on unexpected page" -fout
+        #   if($debugMode){
+        #        log -text ("Failed to open O365 logon page") -debugg
+        #        log -text ("IE landed on this Location Name: " + $script:IE.locationname) -debugg
+        #        log -text ("IE landed on this Location URL: " + $script:IE.locationurl) -debugg
+        #        closeIE
+        #    ExitScript
+        #    }
 }
 
 function getElementById{
@@ -589,7 +603,8 @@ function closeFileExplorerWindow {                                        #Funct
     
     $timeout = New-TimeSpan -Seconds 30                                   #Set timout
     $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
-        
+    
+    log -text ("Timout: " + $timeout + " [hh:mm:ss]")    
     while ($sw.elapsed -lt $timeout){       
         
         $fs = (New-Object -comObject Shell.Application).Windows()|`       #Create object to store list of File Explorer windows containing SharePoint library
@@ -960,6 +975,7 @@ if(Get-ProcessAll iexplore){                                                    
         sleep -Seconds 1
     }
     $sw.stop()                                                                                         #stop the timer
+    Write-Host ""
 
     if($sw.elapsed -gt $timeout){                                                                      #exit script if timed out
         log -text "Timeout reached. Terminating script for user data safety reasons" -fout
