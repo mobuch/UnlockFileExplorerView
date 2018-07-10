@@ -90,6 +90,9 @@
 #4 Logging in to the O365 process if user not logged in automatically added
 #5 Code to manage IE Protected Mode settings (for O365 login process) added
 #6 Mapped drives optimization/conversion from URL to UNC added
+
+#0.7.1
+#1 Improved O365 logon process
 #>
 
 
@@ -109,7 +112,7 @@ param(
     )
 
 
-$version                     = "0.7.0"
+$version                     = "0.7.1"
 
 if($debugon){$debugMode      = $True}                                                                               #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                                                              #Force DebugMode Off if script run without Consloe output                                                 
@@ -507,16 +510,6 @@ function logonProcess{
         log -text "View in File Explorer URL loaded"
         log -text "Waiting for library to open in Windows Explorer"
         }
-        
-        #else{
-        #    log -text "IE landed on unexpected page" -fout
-        #   if($debugMode){
-        #        log -text ("Failed to open O365 logon page") -debugg
-        #        log -text ("IE landed on this Location Name: " + $script:IE.locationname) -debugg
-        #        log -text ("IE landed on this Location URL: " + $script:IE.locationurl) -debugg
-        #        closeIE
-        #    ExitScript
-        #    }
 }
 
 function getElementById{
