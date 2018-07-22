@@ -2,7 +2,7 @@
 
 #UnlockFileExplorerView
 
-#Version           = "0.7.1"
+#Version           = "0.7.2"
 
 #Copyright:         Free to use, please leave this header intact
 #Author:            Marek Obuchowski (http://www.mobuchowski.pl)
@@ -97,6 +97,10 @@
 #3 Better logic for extracting URL elements from mapped drives. Now we are able to extract correct Site Collections if Site Collection pattern is provided
 #4 Rebuilt logic behind buildig URL from extracted elements. Less variables needed now
 #5 Simplified code order for easier flow via different functions
+
+#0.7.2
+#1 Testing path: HKCU:\Network before drives optimization to handle those rare cases where a user does not have any drives mapped and the key does not exist
+#2 Updates drive optimization; it now converts %20 in URL format to " " in UNC
 #>
 
 
@@ -114,7 +118,7 @@ param(
     )
 
 
-$version                     = "0.7.1"
+$version                     = "0.7.2"
 
 if($debugon){$debugMode      = $True}                                                                               #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                                                              #Force DebugMode Off if script run without Consloe output                                                 
@@ -768,30 +772,38 @@ log -text "Optimizing mapped drives for View in File Explorer functionality"
 try{
     $mappeddrives = @()                                                                                       #An array for storing all mapped sharepoitn drives
     if($debugmode){log -text "Trying to convert all URL mappings to UNC mappings" -debugg}
-    Push-Location                                                                                             #store current location
-    Get-ChildItem HKCU:\Network | ForEach-Object {                                                            #list all mappings in HCKU:\Network and loop throuch each object
-       $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                    #build registry location path for each mapping
-       set-location $temploc                                                                                  #set location to each mapping
-       $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"           #store old path
-       if ($oldpath -like "https:*sharepoint.com*"){                                                          #if old path contains https://*sharepoint.com*
+    
+      if(Test-Path HKCU:\Network){ 
+        Push-Location                                                                                                                  #store current location
+        Get-ChildItem HKCU:\Network | ForEach-Object {                                                                                 #list all mappings in HCKU:\Network and loop throuch each object
+           $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                                         #build registry location path for each mapping
+           set-location $temploc                                                                                                       #set location to each mapping
+           $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"                                #store old path
+                               if ($oldpath -like "https:*sharepoint.com*"){                                                           #if old path contains https://*sharepoint.com*
             if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-            $newpath = (($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites'           #transform it into unc
+            $newpath = ((($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '         #transform it into unc
             if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
-            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                          #and set the value to new unc path
-        }elseif($oldpath -like "http:*sharepoint.com*"){                                                      #if old path contains http://*sharepoint.com*  
+            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                   #and set the value to new unc path
+                            }elseif($oldpath -like "http:*sharepoint.com*"){                                                           #if old path contains http://*sharepoint.com*  
             if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-            $newpath = (($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites'            #transform it into unc
+            $newpath = ((($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '          #transform it into unc
             if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
-            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                          #and set the value to new unc path
-        }elseif($oldpath -like "\\*sharepoint.com@ssl\*"){
+            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                   #and set the value to new unc path
+                    }elseif($oldpath -like "\\*sharepoint.com@ssl\*"){
             if($debugmode){log -text ("UNC mapping found, no need to optimize it: " + $oldpath) -debugg}
             $newpath = $oldpath            
             }
-        if($newpath){$mappeddrives += $newpath}
-       }
-    Pop-Location
-    log -text "Mapped drives optimized"
-    return $mappeddrives
+            if($newpath){$mappeddrives += $newpath}
+           }
+       
+        Pop-Location
+        log -text "Mapped drives optimized"
+        return $mappeddrives
+    }else{
+        log -text "No mapped drives found in the system, terminating"
+        exitScript
+    }
+
     }catch{
      if($debugmode){log -text "Errors while converting URL mappings into the UNC mappins" -fout}
     }
