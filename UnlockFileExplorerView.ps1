@@ -112,6 +112,53 @@
 #5 Implement graphical status bar or window
 ####>
 
+
+
+
+
+<#
+.SYNOPSIS
+Unlocks the SharePoint mapped drives.
+.DESCRIPTION
+Script checks if the user has any SharePoint Online sites or libraries mapped to their computer.
+    1.	Initialize logging to the file, for troubleshooting and audit
+    2.	Testing SPE network connectivity. The script stops if the machine is not connected to one of the following: SPE Lan, Swing (office or Aruba), SPE VPN
+    3.	Search for SharePoint Online mapped drives. Terminate if mappings not found. Optimize URL type mappings into UNC type mappings
+    4.	Extract tenant url, site collection, site name, library name, folders and subfolder names
+    5.	Build View in File Explorer View URL from previously extracted data
+    6.	Test connectivity to the tenant SharePoint url. Terminate if no connection the SharePoint servers
+    7.	Test mapped drives access state. Terminate if access already unlocked
+    8.	Prompt user to close IE if already running
+    9.	Configure IE popup blocker (allow tenant url)
+    10.	The first attempt to unlock the drives. First attempt assumes the user is configured for auto-logon.
+        a.	Open View in File Explorer View URL in IE
+        b.	Wait for the library to open in the file explorer, close when found
+        c.	Retest access state
+    11.	Second attempt to unlock the drives. Execute only If the first attempt fails. 
+        a.	Pull user UPN from AD
+        b.	Disable IE Protected Mode temporarily
+        c.	Open View in File Explorer View URL in IE
+        d.	Wait for page to load. If login page found, search for login button where it equals user UPN, activate the login process if the correct user located on page
+        e.	Wait for the View in File Explorer URL to load,
+        f.	Wait for the library to open in file explorer, close when found
+        g.	Retest access state
+    12.	Exit script
+.PARAMETER hideConsole  
+The parameter is used for hiding the console window from the user
+.PARAMETER debugon
+The parameter is used for troubleshooting the script execution when activated, all processes are happening in the foreground and visible to the user, and additional pauses are added for the user to confirm script phases
+.EXAMPLE
+Run the script in normal mode. Console and output are displayed to the user.
+.\UnlockFileExplorerView
+.EXAMPLE 
+Run the script in a hidden mode. Console and output are hidden from the user.
+Hideconsole cannot be used in conjunction with -debugon parameter.
+.\UnlockFileExplorerView -hideconsole
+.EXAMPLE 
+Run the script in a hidden mode. Console and output are visible to the user. Additional debug information is displayed and logged to the file. All processes are happening in the foreground and visible to the user.
+Debugon cannot be used in conjuction with -hideconsole parameter.
+.\UnlockFileExplorerView -debugon
+#> 
 param(  
     [Switch]$hideConsole,                                                                                           #Show or hide output in the console based on the script parameter
     [Switch]$debugon                                                                                                #Enable debug via parameter        
