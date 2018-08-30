@@ -2,7 +2,7 @@
 
 #UnlockFileExplorerView
 
-#Version           = "0.7.2"
+#Version           = "0.7.4"
 
 #Copyright:         Free to use, please leave this header intact
 #Author:            Marek Obuchowski (http://www.mobuchowski.pl)
@@ -101,6 +101,12 @@
 #0.7.2
 #1 Testing path: HKCU:\Network before drives optimization to handle those rare cases where a user does not have any drives mapped and the key does not exist
 #2 Updates drive optimization; it now converts %20 in URL format to " " in UNC
+
+#0.7.3
+#1 Disabled "first unlock" that assumes that the user is logged in to O365 automatically
+
+#0.7.4
+#2 Add support for DavWWWRoot keyword in the mapping format
 #>
 
 
@@ -113,24 +119,21 @@
 ####>
 
 
-
-
-
 <#
 .SYNOPSIS
 Unlocks the SharePoint mapped drives.
 .DESCRIPTION
 Script checks if the user has any SharePoint Online sites or libraries mapped to their computer.
     1.	Initialize logging to the file, for troubleshooting and audit
-    2.	Testing SPE network connectivity. The script stops if the machine is not connected to one of the following: SPE Lan, Swing (office or Aruba), SPE VPN
+    2.	Testing corporate network connectivity.
     3.	Search for SharePoint Online mapped drives. Terminate if mappings not found. Optimize URL type mappings into UNC type mappings
     4.	Extract tenant url, site collection, site name, library name, folders and subfolder names
     5.	Build View in File Explorer View URL from previously extracted data
     6.	Test connectivity to the tenant SharePoint url. Terminate if no connection the SharePoint servers
     7.	Test mapped drives access state. Terminate if access already unlocked
-    8.	Prompt user to close IE if already running
+    #Disabled 8.	Prompt user to close IE if already running
     9.	Configure IE popup blocker (allow tenant url)
-    10.	The first attempt to unlock the drives. First attempt assumes the user is configured for auto-logon.
+    #Disabled 10.	The first attempt to unlock the drives. First attempt assumes the user is configured for auto-logon.
         a.	Open View in File Explorer View URL in IE
         b.	Wait for the library to open in the file explorer, close when found
         c.	Retest access state
@@ -165,7 +168,7 @@ param(
     )
 
 
-$version                     = "0.7.2"
+$version                     = "0.7.4"
 
 if($debugon){$debugMode      = $True}                                                                               #Enable debug based on parameter
 if($hideConsole){$debugMode  = $false}                                                                              #Force DebugMode Off if script run without Consloe output                                                 
@@ -200,6 +203,7 @@ $UPN                         = $null                                            
 $IE                          = $null                                                                                #Variable for storing IE object
 $startTime                   = Get-Date                                                                             #Variables for logging script execution time
 $endTime                     = $null                                                                                #Variables for logging script execution time
+$firsttry                    = $False                                                                               #Variable for storing outcome of the first try, if False, secodn try will be actioned
 
 #endregion
 
@@ -435,19 +439,21 @@ function closeIE{
         }
 
     if($script:IE.HWND -ne $null){                                                                                    
-        if ($debugMode) {log -text "IE.HWND found - Quitting IE gracefully" -debugg}                                 #Write dubg log
+        if ($debugMode) {log -text "IE.HWND found - quitting IE gracefully" -debugg}                                 #Write dubg log
         $script:IE.Parent.Quit()                                                                                     #Quit IE processes if HWDN not found for the IE object 
         $script:IE = $null 
     } else {
-        if ($debugMode) {log -text "IE.HWND not found - killing IE" -debugg}                                         #Write dubg log
-        killIE                                   
+        if ($debugMode) {log -text "IE.HWND not found - unable to close IE" -debugg}                                         #Write dubg log
+        #Disabled as par tof the 0.7.2
+        #killIE                                   
     }
     sleep -s 1
-    $test = Get-ProcessAll iexplore                                                                                  #Double check if IE not running, kill if Quit did not work
-    if($test){
-        if($debugmode){log -text "IE still running - killing the process" -debugg}    
-        killIE
-        }                                                                                                            #Kill IE if still working
+    #Disabled as par tof the 0.7.2
+    #$test = Get-ProcessAll iexplore                                                                                  #Double check if IE not running, kill if Quit did not work
+    #if($test){
+    #    if($debugmode){log -text "IE still running - killing the process" -debugg}    
+    #    killIE
+    #    }                                                                                                            #Kill IE if still working
 }
 
 function killIE {
@@ -655,13 +661,22 @@ function closeFileExplorerWindow {                                        #Funct
         $fs = (New-Object -comObject Shell.Application).Windows()|`       #Create object to store list of File Explorer windows containing SharePoint library
             where-object { ($_.LocationName -like ("*$libraryName*"))`
             -and  ($_.Name -like "*File Explorer*") }
+
     
         if ($fs) {                                                        #Check if File Explorer window is open.
-               if ($debugMode) {
-                log -text ("Library found open") -debugg                  
-                pause                                                     #Wait for keystroke if in Debug mode
-                write-host ""                
-                }
+               #region:Disabled in 0.7.3
+               
+               #if ($debugMode) {
+               # log -text ("Library found open. Press enter to continue") -debugg                  
+               # pause                                                     #Wait for keystroke if in Debug mode
+               # write-host ""                
+               # }
+
+               #endregion
+
+               #$fs | ForEach-Object {$_.Visible = $False}                 #Hide library windows
+               log -text "Library found open"                              #Inform user
+
 
                log -text "Closing File Explorer Window"                   #Inform user
                $fs | ForEach-Object {$_.Quit()}
@@ -821,27 +836,39 @@ try{
     if($debugmode){log -text "Trying to convert all URL mappings to UNC mappings" -debugg}
     
       if(Test-Path HKCU:\Network){ 
-        Push-Location                                                                                                                  #store current location
-        Get-ChildItem HKCU:\Network | ForEach-Object {                                                                                 #list all mappings in HCKU:\Network and loop throuch each object
-           $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                                         #build registry location path for each mapping
-           set-location $temploc                                                                                                       #set location to each mapping
-           $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"                                #store old path
-                               if ($oldpath -like "https:*sharepoint.com*"){                                                           #if old path contains https://*sharepoint.com*
-            if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-            $newpath = ((($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '         #transform it into unc
-            if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
-            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                   #and set the value to new unc path
-                            }elseif($oldpath -like "http:*sharepoint.com*"){                                                           #if old path contains http://*sharepoint.com*  
-            if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-            $newpath = ((($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '          #transform it into unc
-            if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
-            Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                   #and set the value to new unc path
-                    }elseif($oldpath -like "\\*sharepoint.com@ssl\*"){
-            if($debugmode){log -text ("UNC mapping found, no need to optimize it: " + $oldpath) -debugg}
-            $newpath = $oldpath            
-            }
+        Push-Location                                                                                                                             #store current location
+        Get-ChildItem HKCU:\Network | ForEach-Object {                                                                                            #list all mappings in HCKU:\Network and loop throuch each object
+           $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                                                    #build registry location path for each mapping
+           set-location $temploc                                                                                                                  #set location to each mapping
+           $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"                                           #store old path
+
+           
+            if ($oldpath -like "https:*sharepoint.com*"){                                                                                         #if old path contains https://*sharepoint.com*
+                if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
+                $newpath = ((($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '     #transform it into unc
+                if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+                Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                          #and set the value to new unc path
+            }elseif($oldpath -like "http:*sharepoint.com*"){                                                                                      #if old path contains http://*sharepoint.com*  
+                if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
+                $newpath = ((($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '      #transform it into unc
+                if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+                Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                          #and set the value to new unc path
+            }elseif($oldpath -like "\\*sharepoint.com@ssl\DavWWWRoot\*"){
+                if($debugmode){log -text ("UNC DavWWWRoot mappings found: " + $oldpath) -debugg}
+                $newpath = ($oldpath -replace '\\DavWWWRoot', "") -replace '%20',' '
+                if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+                Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String
+            }elseif($oldpath -like "\\*sharepoint.com\DavWWWRoot\*"){
+                if($debugmode){log -text ("UNC DavWWWRoot mappings found: " + $oldpath) -debugg}
+                $newpath = ($oldpath -replace '\\DavWWWRoot', "@ssl") -replace '%20',' '
+                if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
+                Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String
+            }elseif ($oldpath -like "\\*sharepoint.com@ssl"){
+                if($debugmode){log -text ("UNC mapping found, no need to optimize it: " + $oldpath) -debugg}
+                $newpath = $oldpath
+                }
             if($newpath){$mappeddrives += $newpath}
-           }
+        }
        
         Pop-Location
         log -text "Mapped drives optimized"
@@ -892,15 +919,6 @@ log -text "******** Start script: $startTime ********"
 
 if($debugMode){log -text "Debug Mode enabled" -warning}
 
-
-#Check connections and current access state
-if (testConnection $dcName "Corporate network") {                                  #Check connection to the logon server, abort if fails
-#proceed
-}else{
-    log -text ("Not connected to the Corporate network") -fout
-    exitScript
-    }  
-
 #find if SharePoint Online mappings exist and ensure all are in the UNC format
 $mp = UpdateNetworkMappings
 
@@ -946,7 +964,17 @@ try {
     exitScript
 }
 
-if (testConnection ($baseURL) "SharePoint Online Servers") {                         #Check connection to the SharePoint Online server, abort if fails
+#Check connections and current access state
+if (testConnection $dcName "Corporate network") {                                  #Check connection to the logon server, abort if fails
+#proceed
+}else{
+    log -text ("Not connected to the Corporate network") -fout
+    exitScript
+    }  
+
+
+#Check connection to the SharePoint Online server, abort if fails
+if (testConnection ($baseURL) "SharePoint Online Servers") {
 #proceed    
 }else{
     log -text ("No connection to the SharePoint Online Servers") -fout
@@ -972,6 +1000,7 @@ if($DebugMode) {log -text ("View in File Explorer URL: " + $URL) -debugg}
 
 $unlocked = checkDrive ($mappedURL)                                                #Check the current state of access and store in the $Unlocked variable                          
 
+
 #Overwirte access test result if in Debug mode    
 if ($debugMode) {
     $unlocked = $false                                                             #Set the access state to $False if in DEbug mode. This allows testing entire scritpt
@@ -983,6 +1012,9 @@ if ($unlocked) {                                                                
     ExitScript
     }
 
+
+#region:IE processes checks disabled in 0.7.3
+<#
 #Ensure no IE processes are running before starting our instance
 if(Get-ProcessAll iexplore){                                                                          #Check if IE already running
     $timeout = New-TimeSpan -seconds 120                                                              #Set timout
@@ -1003,9 +1035,15 @@ if(Get-ProcessAll iexplore){                                                    
         exitscript
     }
 }
+#>
+#endregion
 
 #Configrue IE popup blocker
 IEpopup                                                               
+
+#region:First Attempt disabled in 0.7.3
+<#
+
 
 #First attempt with no changes to the protected mode
 log -text "First attempt to unlock the drives"
@@ -1018,21 +1056,25 @@ if($Debugmode){
     log -text "Simulating first attempt as failed to force fallback into Protected Mode overwrite functions" -debugg
     }
 
+#Second attempt with overwriting Protected Mode settings
+if(Get-ProcessAll iexplore){                                          #Close it if IE still running after first attempt
+    closeIE
+    }
+
+#>
+#endregion
+
 #Check if we can overwrite Protected Mode settings
 $gpoProtectedmode = checkProtectedModeGPO                             #Check if IE Protected mode set via GPO
 if(!$gpoProtectedMode){                                               #If IE Protected mode not set in GPO
     if($debugMode){log -text "Prtoected mode IS NOT set via GPO. Protected Mode override functions ARE available" -debugg}
 }else{
-    if($debugMode){log -text "Prtoected mode IS set via GPO. Protected Mode override functions ARE NOT available" -fout
+    if($debugMode){
+        log -text "Prtoected mode IS set via GPO. Protected Mode override functions ARE NOT available" -fout
         log -text "Unable to proceed with the second attempt due to the company policy applied to the computer" -fout
         log -text "Terminating script" -fout
         exitScript
         }
-    }
-
-#Second attempt with overwriting Protected Mode settings
-if(Get-ProcessAll iexplore){                                          #Close it if IE still running after first attempt
-    closeIE
     }
 
 if(($firsttry -ne $True) -and $autoProtectedMode -and !$GPOprotectedMode){
@@ -1048,10 +1090,10 @@ $unlocked = checkDrive ($mappedURL)                                   #Check the
 
 if ($unlocked) {                                                      #Check if access already enabled, terminate if yes
     log -text "You can now use mapped drives. Terminating"            #Inform user
-    ExitScript
     } else {
         log -text "Script failed to unlock the mapped drives" -fout
-        ExitScript
         }
+
+ExitScript
 
 ####End Script
