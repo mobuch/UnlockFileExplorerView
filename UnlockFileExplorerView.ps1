@@ -106,7 +106,12 @@
 #1 Disabled "first unlock" that assumes that the user is logged in to O365 automatically
 
 #0.7.4
-#2 Add support for DavWWWRoot keyword in the mapping format
+#1 Add support for DavWWWRoot keyword in the mapping format
+#2 Added extraction of the drive letters
+#3 Changed access state test to testign drive lettes first, hten unc paths
+#4 Cosmetic changes to the exitScript functions
+#5 Add variable for managing timeouts and set it to 60 seconds
+#6 Update library hadnling with code that dynamically switches from UNC window to the mapped letter in order to make the unlock process more reliable and consistent
 #>
 
 
@@ -204,6 +209,7 @@ $IE                          = $null                                            
 $startTime                   = Get-Date                                                                             #Variables for logging script execution time
 $endTime                     = $null                                                                                #Variables for logging script execution time
 $firsttry                    = $False                                                                               #Variable for storing outcome of the first try, if False, secodn try will be actioned
+$timeoutSec                  = 60                                                                                   #Timeout value in seconds (for page and library laoding wait time)
 
 #endregion
 
@@ -503,7 +509,7 @@ try{
 
 function logonProcess{
 
-    $timeout = New-TimeSpan -Seconds 30                                   #Set timout
+    $timeout = New-TimeSpan -Seconds $timeoutSec                          #Set timout
     $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
     
     log -text ("Waiting for O365 logon page. Timeout: $timeout" + " [hh:mm:ss]")    
@@ -541,7 +547,7 @@ function logonProcess{
     }
 
 
-    $timeout = New-TimeSpan -Seconds 30                                                               #Set timout
+    $timeout = New-TimeSpan -Seconds $timeoutSec                                                               #Set timout
     $sw      = [diagnostics.stopwatch]::StartNew()                                                    #Start stop watch
                 
     log -text ("Timeout: " + $timeout +" [hh:mm:ss]")
@@ -652,7 +658,7 @@ function closeFileExplorerWindow {                                        #Funct
 
     try {
     
-    $timeout = New-TimeSpan -Seconds 30                                   #Set timout
+    $timeout = New-TimeSpan -Seconds $timeoutSec                          #Set timout
     $sw      = [diagnostics.stopwatch]::StartNew()                        #Start stop watch
     
     log -text ("Timout: " + $timeout + " [hh:mm:ss]")    
@@ -674,9 +680,15 @@ function closeFileExplorerWindow {                                        #Funct
 
                #endregion
 
-               #$fs | ForEach-Object {$_.Visible = $False}                 #Hide library windows
-               log -text "Library found open"                              #Inform user
+               $fs | ForEach-Object {$_.Visible = $debugMode}             #Hide library windows
+               sleep -s 1
+               
+               try {
+                $fs.Navigate2($($driveletter+":"))
+                sleep -s 1
+               }catch{}
 
+               log -text "Library found open"                             #Inform user
 
                log -text "Closing File Explorer Window"                   #Inform user
                $fs | ForEach-Object {$_.Quit()}
@@ -729,7 +741,9 @@ function extractMappedDrivesElements($mp) {                                     
 
     
     $i = $null
-    foreach ($line in $mp){
+    foreach ($key in $mp.Keys){
+            $line              = $mp[$key]
+            $driveletter       = $key
             if($line -like "\\*.sharepoint.com@ssl\*"){
                 $tempMappedURL = $line
                 $line = $line.trimstart('\\').trim().split("\")
@@ -825,6 +839,7 @@ function extractMappedDrivesElements($mp) {                                     
     $tempSite
     $tempLib
     $tempFolder
+    $driveletter
 }
 
 function UpdateNetworkMappings {
@@ -832,25 +847,26 @@ function UpdateNetworkMappings {
 log -text "Optimizing mapped drives for View in File Explorer functionality"
 
 try{
-    $mappeddrives = @()                                                                                       #An array for storing all mapped sharepoitn drives
+    $mappeddrives = @{}                                                                                       #An array for storing all mapped sharepoitn drives
     if($debugmode){log -text "Trying to convert all URL mappings to UNC mappings" -debugg}
     
       if(Test-Path HKCU:\Network){ 
         Push-Location                                                                                                                             #store current location
         Get-ChildItem HKCU:\Network | ForEach-Object {                                                                                            #list all mappings in HCKU:\Network and loop throuch each object
-           $temploc = $("HKCU:\Network\"+$_.name.substring($_.name.Length -1))                                                                    #build registry location path for each mapping
+           $driveLetter = $_.name.substring($_.name.Length -1)                                                                                    #Extract drive letter
+           $temploc = $("HKCU:\Network\"+$driveLetter)                                                                                            #build registry location path for each mapping
            set-location $temploc                                                                                                                  #set location to each mapping
            $oldpath = Get-ItemProperty -Path . -Name "RemotePath" | select -ExpandProperty "RemotePath"                                           #store old path
 
            
             if ($oldpath -like "https:*sharepoint.com*"){                                                                                         #if old path contains https://*sharepoint.com*
                 if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-                $newpath = ((($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '     #transform it into unc
+                $newpath = ((($oldpath -replace "https:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '                #transform it into unc
                 if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
                 Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                          #and set the value to new unc path
             }elseif($oldpath -like "http:*sharepoint.com*"){                                                                                      #if old path contains http://*sharepoint.com*  
-                if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}
-                $newpath = ((($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '      #transform it into unc
+                if($debugmode){log -text ("URL mappings found: " + $oldpath) -debugg}                
+                $newpath = ((($oldpath -replace "http:","") -replace '/','\') -replace '\\sites','@ssl\sites') -replace '%20',' '                 #transform it into unc
                 if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
                 Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String                                                          #and set the value to new unc path
             }elseif($oldpath -like "\\*sharepoint.com@ssl\DavWWWRoot\*"){
@@ -863,16 +879,19 @@ try{
                 $newpath = ($oldpath -replace '\\DavWWWRoot', "@ssl") -replace '%20',' '
                 if($debugmode){log -text ("Converting it to the UNC mapping: " + $newpath) -debugg}
                 Set-ItemProperty -path . -Name "RemotePath" -Value $newpath -type String
-            }elseif ($oldpath -like "\\*sharepoint.com@ssl"){
+            }elseif ($oldpath -like "\\*sharepoint.com@ssl*"){
                 if($debugmode){log -text ("UNC mapping found, no need to optimize it: " + $oldpath) -debugg}
                 $newpath = $oldpath
                 }
-            if($newpath){$mappeddrives += $newpath}
+            if($newpath){$mappeddrives.add($driveLetter, $newpath)}
         }
        
         Pop-Location
         log -text "Mapped drives optimized"
-        return $mappeddrives
+        if ($mappeddrives.Count -ne 0){
+            return $mappeddrives
+        }else{
+            return $false}
     }else{
         log -text "No mapped drives found in the system, terminating"
         exitScript
@@ -884,10 +903,10 @@ try{
 }
 
 function ExitScript{
-    Start-Sleep -s 5         #Give time to read the script
     $endTime = get-date
     if($debugMode){log -text ("Script execution time: " + ($endTime - $startTime)) -debugg}
     log -text "******** End script: $endTime ********"
+    Start-Sleep -s 5         #Give time to read the script
     exit
     }
 
@@ -922,7 +941,7 @@ if($debugMode){log -text "Debug Mode enabled" -warning}
 #find if SharePoint Online mappings exist and ensure all are in the UNC format
 $mp = UpdateNetworkMappings
 
-if($mp){
+if($mp -ne $False){
 
     #Extract URL elements from the Mapped Drives Elements
     try {
@@ -941,9 +960,9 @@ if($mp){
     $siteName       = $return[3]
     $libraryName    = $return[4]
     $subfolders     = $Return[5]
+    $driveletter    = $Return[6]
 }else {
-        log -text "No SharePoint mapping found. Terminating" -fout
-        closeIE
+        log -text "No SharePoint mapping found. Terminating" -warning
         exitScript
         }
 
@@ -952,7 +971,7 @@ try {
     #Display collected information
     if($mappedURL)       {log -text ("Mapped URL: " + $mappedURL)}                    else{log -text ("Mapped url: NOT FOUND")      -warning}
     if ($baseURL)        {log -text ("Base URL: "   + $baseURL)}                      else{log -text ("Base URL: NOT FOUND"  )      -warning}
-    if ($siteCollection) {log -text ("Site Collection: "        + $siteCollection)}   else{log -text ("Site Collection: NOT FOUND")  -warning}
+    if ($siteCollection) {log -text ("Site Collection: "        + $siteCollection)}   else{log -text ("Site Collection: NOT FOUND") -warning}
     if ($siteName)       {log -text ("Site: "       + $siteName)}                     else{log -text ("Site: NOT FOUND"      )      -warning}
     if ($libraryName)    {log -text ("Library: "    + $libraryName)}                  else{log -text ("Library: NOT FOUND"   )      -warning}
 
@@ -998,7 +1017,7 @@ if (testConnection ($baseURL) "SharePoint Online Servers") {
 if($DebugMode) {log -text ("View in File Explorer URL: " + $URL) -debugg}
     
 
-$unlocked = checkDrive ($mappedURL)                                                #Check the current state of access and store in the $Unlocked variable                          
+if($driveletter) {$unlocked = checkDrive $($driveletter + ":")}else{$unlocked = checkDrive $mappedURL}                                        #Check the current state of access and store in the $Unlocked variable                          
 
 
 #Overwirte access test result if in Debug mode    
@@ -1078,21 +1097,22 @@ if(!$gpoProtectedMode){                                               #If IE Pro
     }
 
 if(($firsttry -ne $True) -and $autoProtectedMode -and !$GPOprotectedMode){
-    if($debugMode){log -text "Failed to process with current user configruation. Re-trying with protected mode disabled" -warning}
+    if($debugMode){log -text "SharePoint drives unlocking process started" -warning}
         $secondtry = openIE -unprotected                              #Check if process succeeded with current configuration. Re-try with Protected Mode override
         closeIE
-        if(!$secondtry){log -text "Unexpected result of the second logon attempt, re-evaluating to obtain current access state" -warning}
+        if(!$secondtry){log -text "Unexpected result of the unlock attempt, re-evaluating to obtain current access state" -warning}
 }
 
 
 #Double check if access unlocked
-$unlocked = checkDrive ($mappedURL)                                   #Check the current state of access and store in the $Unlocked variable
+if($driveletter) {$unlocked = checkDrive $($driveletter + ":")}else{$unlocked = checkDrive $mappedURL}                                   #Check the current state of access and store in the $Unlocked variable
 
 if ($unlocked) {                                                      #Check if access already enabled, terminate if yes
     log -text "You can now use mapped drives. Terminating"            #Inform user
     } else {
         log -text "Script failed to unlock the mapped drives" -fout
         }
+
 
 ExitScript
 
